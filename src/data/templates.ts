@@ -1,12 +1,12 @@
 import type { PortfolioDocument, PortfolioItem, PortfolioSection, PortfolioTemplate, PortfolioTheme } from '../../shared/portfolio';
 
 const image = {
-  sculpture: '/images/template-cobalt-sculpture.png',
+  sculpture: '/images/template-cobalt-sculpture.webp',
   studio: 'https://images.unsplash.com/photo-1558655146-d09347e92766?auto=format&fit=crop&w=1200&q=85',
-  architecture: '/images/template-desert-concrete.png',
+  architecture: '/images/template-desert-concrete.webp',
   model: 'https://images.unsplash.com/photo-1511818966892-d7d671e672a2?auto=format&fit=crop&w=1200&q=85',
   field: 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=1500&q=85',
-  neural: '/images/template-neural-branch.png',
+  neural: '/images/template-neural-branch.webp',
   forest: 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=1500&q=85',
   data: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1400&q=85',
   product: 'https://images.unsplash.com/photo-1567016432779-094069958ea5?auto=format&fit=crop&w=1400&q=85',

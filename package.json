@@ -11,9 +11,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "dev:api": "wrangler pages dev dist --port 8787",
+    "dev:api": "wrangler pages dev dist --port 8787 --binding APP_ORIGIN=http://127.0.0.1:8787 --binding PUBLIC_APP_URL=http://127.0.0.1:8787",
     "deploy": "node scripts/deploy-pages.mjs",
-    "db:migrate": "wrangler d1 migrations apply portfolio-studio --local"
+    "db:migrate": "wrangler d1 migrations apply portfolio-studio --local",
+    "format": "prettier --write src server shared tests *.ts *.json *.jsonc scripts README.md"
   },
   "engines": {
     "node": ">=22.12.0"
@@ -43,6 +44,8 @@
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.2",
     "esbuild": "0.28.2",
+    "prettier": "3.9.10",
+    "sharp": "0.35.5",
     "typescript": "7.0.2",
     "vite": "8.3.5",
     "vitest": "5.0.5",
