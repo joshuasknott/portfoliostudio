@@ -1,8 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { pbkdf2Sync } from "node:crypto";
 import { createApp, enforceRateLimit } from "./server/app";
 import { MemoryStore } from "./server/store";
 import { portfolioSchema } from "./shared/portfolio";
-import { hashToken } from "./server/security";
+import {
+  base64url,
+  hashPassword,
+  hashToken,
+  verifyPassword,
+} from "./server/security";
 
 const document = portfolioSchema.parse({
   version: 1,
@@ -73,6 +79,22 @@ describe("Portfolio Studio API", () => {
   let app: ReturnType<typeof createApp>;
   beforeEach(() => {
     app = createApp(new MemoryStore());
+  });
+  it("uses Workers-compatible scrypt hashes and verifies legacy PBKDF2 accounts", async () => {
+    const current = await hashPassword("correct horse 123", "current-salt");
+    expect(current.startsWith("scrypt-v1$32768$8$3$67108864$")).toBe(true);
+    expect(await verifyPassword("correct horse 123", current)).toBe(true);
+    expect(await verifyPassword("wrong password", current)).toBe(false);
+    const legacyDigest = pbkdf2Sync(
+      "legacy password",
+      "legacy-salt",
+      600_000,
+      32,
+      "sha256",
+    );
+    const legacy = `pbkdf2-sha256$600000$legacy-salt$${base64url(new Uint8Array(legacyDigest))}`;
+    expect(await verifyPassword("legacy password", legacy)).toBe(true);
+    expect(await verifyPassword("wrong password", legacy)).toBe(false);
   });
   it("counts concurrent same-network rate-limit requests atomically up to the cap", async () => {
     const store = new MemoryStore();

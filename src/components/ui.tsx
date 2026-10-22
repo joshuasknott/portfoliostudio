@@ -201,8 +201,8 @@ export function PortfolioThumbnail({
       <div
         inert
         style={{
-          width: 1100,
-          transform: `scale(${width / 1100})`,
+          width: 1140,
+          transform: `scale(${width / 1140})`,
           transformOrigin: "top left",
         }}
       >

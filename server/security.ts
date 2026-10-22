@@ -1,6 +1,48 @@
+import { pbkdf2 as nodePbkdf2, scrypt as nodeScrypt } from "node:crypto";
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
-const iterations = 600_000;
+const legacyPbkdf2Iterations = 600_000;
+// OWASP's equivalent scrypt minimums include N=2^15, r=8, p=3. This
+// configuration keeps the recommended memory-hard work factor while staying
+// within the Workers native crypto memory limit.
+const scryptCost = 32_768;
+const scryptBlockSize = 8;
+const scryptParallelism = 3;
+const scryptMaxMemory = 64 * 1024 * 1024;
+
+function deriveScrypt(password: string, salt: string): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    nodeScrypt(
+      password,
+      salt,
+      32,
+      {
+        N: scryptCost,
+        r: scryptBlockSize,
+        p: scryptParallelism,
+        maxmem: scryptMaxMemory,
+      },
+      (error, derived) => {
+        if (error) reject(error);
+        else resolve(new Uint8Array(derived));
+      },
+    );
+  });
+}
+
+function deriveLegacyPbkdf2(
+  password: string,
+  salt: string,
+  iterations: number,
+): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    nodePbkdf2(password, salt, iterations, 32, "sha256", (error, derived) => {
+      if (error) reject(error);
+      else resolve(new Uint8Array(derived));
+    });
+  });
+}
 
 export function randomBytes(size = 32): Uint8Array {
   const bytes = new Uint8Array(size);
@@ -28,34 +70,51 @@ export async function hashPassword(
   password: string,
   salt = base64url(randomBytes(16)),
 ): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(password),
-    "PBKDF2",
-    false,
-    ["deriveBits"],
-  );
-  const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt: encoder.encode(salt), iterations, hash: "SHA-256" },
-    key,
-    256,
-  );
-  return `pbkdf2-sha256$${iterations}$${salt}$${base64url(new Uint8Array(bits))}`;
+  const derived = await deriveScrypt(password, salt);
+  return `scrypt-v1$${scryptCost}$${scryptBlockSize}$${scryptParallelism}$${scryptMaxMemory}$${salt}$${base64url(derived)}`;
 }
 export async function verifyPassword(
   password: string,
   stored: string,
 ): Promise<boolean> {
-  const [algorithm, count, salt, digest] = stored.split("$");
-  if (
-    algorithm !== "pbkdf2-sha256" ||
-    count !== String(iterations) ||
-    !salt ||
-    !digest
-  )
+  const parts = stored.split("$");
+  try {
+    if (parts[0] === "scrypt-v1") {
+      const [, cost, blockSize, parallelism, maxMemory, salt, digest] = parts;
+      if (
+        cost !== String(scryptCost) ||
+        blockSize !== String(scryptBlockSize) ||
+        parallelism !== String(scryptParallelism) ||
+        maxMemory !== String(scryptMaxMemory) ||
+        !salt ||
+        !digest
+      )
+        return false;
+      return timingSafeEqual(
+        base64url(await deriveScrypt(password, salt)),
+        digest,
+      );
+    }
+    // Accounts created by the first deployment used PBKDF2-SHA-256. Keep
+    // verifying that version through node:crypto because Workers' WebCrypto
+    // rejects the 600k iteration parameter even though node:crypto supports it.
+    const [algorithm, count, salt, digest] = parts;
+    if (
+      algorithm !== "pbkdf2-sha256" ||
+      count !== String(legacyPbkdf2Iterations) ||
+      !salt ||
+      !digest
+    )
+      return false;
+    return timingSafeEqual(
+      base64url(
+        await deriveLegacyPbkdf2(password, salt, legacyPbkdf2Iterations),
+      ),
+      digest,
+    );
+  } catch {
     return false;
-  const candidate = await hashPassword(password, salt);
-  return timingSafeEqual(candidate, stored);
+  }
 }
 export function timingSafeEqual(a: string, b: string): boolean {
   const left = encoder.encode(a);

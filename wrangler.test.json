@@ -8,12 +8,12 @@
     {
       "binding": "DB",
       "database_name": "portfolio-studio-test",
-      "database_id": "00000000-0000-0000-0000-000000000001",
-    },
+      "database_id": "00000000-0000-0000-0000-000000000001"
+    }
   ],
   "vars": {
     "APP_ORIGIN": "http://127.0.0.1:8788",
     "PUBLIC_APP_URL": "http://127.0.0.1:8788",
-    "ADMIN_USER_IDS": "",
-  },
+    "ADMIN_USER_IDS": ""
+  }
 }
