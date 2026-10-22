@@ -1918,17 +1918,19 @@ export function createApp(
       return assetError(error);
     }
     if (!result) throw new ApiError(404, "Image not found.", "asset_not_found");
-    c.header("Content-Type", result.contentType);
-    c.header("Content-Length", String(result.size));
-    c.header("ETag", result.etag);
-    c.header("X-Content-Type-Options", "nosniff");
-    c.header(
-      "Cache-Control",
-      result.publicAccess
-        ? "public, max-age=300, s-maxage=300"
-        : "private, no-store",
-    );
-    return new Response(result.bytes as unknown as BodyInit);
+    const cacheControl = result.publicAccess
+      ? "public, max-age=300, s-maxage=300"
+      : "private, no-store";
+    c.header("Cache-Control", cacheControl);
+    return new Response(result.bytes as unknown as BodyInit, {
+      headers: {
+        "Content-Type": result.contentType,
+        "Content-Length": String(result.size),
+        ETag: result.etag,
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": cacheControl,
+      },
+    });
   });
   app.patch("/api/projects/:id", async (c) => {
     assertSameOrigin(c.req.raw);

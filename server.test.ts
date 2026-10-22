@@ -317,10 +317,12 @@ describe("Portfolio Studio API", () => {
     });
     expect(uploaded.status).toBe(201);
     const asset = await uploaded.json();
-    expect(
-      (await app.request(asset.url, { headers: { Cookie: first.cookie } }))
-        .status,
-    ).toBe(200);
+    const privateAsset = await app.request(asset.url, {
+      headers: { Cookie: first.cookie },
+    });
+    expect(privateAsset.status).toBe(200);
+    expect(privateAsset.headers.get("content-type")).toBe("image/png");
+    expect(privateAsset.headers.get("cache-control")).toBe("private, no-store");
     expect(
       (await app.request(asset.url, { headers: { Cookie: second.cookie } }))
         .status,
@@ -353,6 +355,8 @@ describe("Portfolio Studio API", () => {
     expect(published.status).toBe(200);
     const publicAsset = await app.request(asset.url);
     expect(publicAsset.status).toBe(200);
+    expect(publicAsset.headers.get("content-type")).toBe("image/png");
+    expect(publicAsset.headers.get("x-content-type-options")).toBe("nosniff");
     expect(publicAsset.headers.get("cache-control")).toContain("max-age=300");
     const unpublish = await app.request(
       `/api/projects/${project.id}/unpublish`,
