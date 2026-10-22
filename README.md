@@ -1,0 +1,76 @@
+# Portfolio Studio
+
+A portfolio builder by **Surrey AI Society**. Start with a considered design or a blank canvas, make it your own, and publish a website you can take with you.
+
+## Features
+
+- Ten editable portfolio designs with independent visual identities.
+- Local drafts, account sign-in, cloud saves and saved versions.
+- CV text import from PDF, DOCX and TXT, processed in the browser.
+- Direct text editing, section reordering, images, typography, colours and responsive previews.
+- AI-assisted editing with a review step and changes scoped to a selected element.
+- Society-managed AI and encrypted personal API keys for supported providers.
+- Public portfolio addresses, separately published snapshots and downloadable static websites.
+- Custom-subdomain verification and connection when the hosting owner configures Pages API access.
+
+Provider account sign-in is intentionally unavailable until an officially supported integration is configured. A consumer AI subscription does not grant API access. Shared AI and hosting have finite allowances; this project does not promise unlimited inference or capacity.
+
+## Run locally
+
+Requires Node.js 22.12 or later and npm.
+
+```sh
+npm ci
+npm run build
+npm run db:migrate
+npm run dev:api
+```
+
+Open `http://localhost:8787`. For frontend development, run `npm run dev` in a second terminal; Vite proxies API requests to port 8787. Rebuild the Worker after server changes with `node scripts/build-worker.mjs`.
+
+Local D1 data lives in the ignored `.wrangler/` directory. Copy the relevant settings from `.env.example` to `.dev.vars` for Wrangler. Use the same hostname consistently for cookies and origin checks. The AI binding uses Cloudflare remotely, so AI requests during local development use the configured Cloudflare allowance.
+
+## Checks
+
+```sh
+npm run typecheck
+npm test
+npm run build
+npm run test:e2e
+```
+
+Backend tests cover ownership boundaries, revision conflicts, published snapshot isolation, account recovery, CSRF, domain verification and AI response validation. Export tests check the generated website archive and editable document. Browser tests exercise the creation and editing flow.
+
+## Deploy
+
+The application uses Cloudflare Pages advanced mode, a dedicated D1 database and Workers AI. `wrangler.jsonc` describes the existing project. Do not reuse another application's database.
+
+```sh
+npx wrangler login
+npx wrangler d1 migrations apply portfolio-studio --remote
+npm run build
+npm run deploy
+```
+
+Configure `APP_ORIGIN` and `PUBLIC_APP_URL` to the production origin. Set `BYOK_ENCRYPTION_KEY` as a random server secret before accepting personal/provider keys. Never put secrets in `VITE_` variables or commit `.dev.vars`.
+
+Administrators are selected by immutable account IDs in `ADMIN_USER_IDS`, not an unverified email address. Create the intended account, obtain its ID from the authenticated session response, and configure that ID before using `/admin`.
+
+Custom domains require a server-only `PAGES_API_TOKEN` with **Pages Write** for the project account, plus `PAGES_ACCOUNT_ID`, `PAGES_PROJECT_NAME` and `PAGES_PROJECT_SUBDOMAIN`. Students add a TXT ownership proof and a CNAME at their domain registrar. They do not need Cloudflare accounts for a supported subdomain. Apex domains and provider-account transfers are not automated; students can export their website to their own host and repoint their domain.
+
+## Ownership and data
+
+Students retain their content and exported websites. The export contains static HTML, styles, fonts, images where download is permitted, and an editable `portfolio.json`. It contains no credentials. Third-party images and fonts retain their own licences. Importing a CV does not upload the original file; extracted text is only sent with an explicitly included AI request.
+
+Published websites have no compulsory Surrey AI Society branding. The Studio itself uses the original Society brand assets from [SurreySocieties](https://github.com/joshuasknott/surreysocieties). Fictional gallery profiles illustrate the designs and are not inserted as a student's experience.
+
+## Project structure
+
+- `src/` — React interface, editor, design library and exports
+- `shared/` — validated portfolio format
+- `server/` — authentication, persistence, AI, domains and published HTML
+- `migrations/` — D1 schema
+- `public/` — maintained brand, font and portfolio assets
+- `tests/` — export, domain and browser coverage
+
+Report problems through [GitHub issues](https://github.com/joshuasknott/portfoliostudio/issues).
