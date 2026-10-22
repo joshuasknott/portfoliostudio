@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import {
+  Link,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import {
   ArrowDown,
   ArrowLeft,
@@ -45,14 +50,9 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { Canvas } from "../components/Canvas";
 import { Loading, Modal, Notice } from "../components/ui";
+import { WorkshopSteps } from "../components/WorkshopSteps";
 import { useProject } from "../lib/useProject";
-import {
-  api,
-  message,
-  projectsApi,
-  removeDraft,
-  uploadImage,
-} from "../lib/api";
+import { api, message, uploadImage } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { readImage } from "../lib/import";
 import {
@@ -74,11 +74,17 @@ function SortableSection({
   active,
   onSelect,
   onToggle,
+  onMove,
+  first,
+  last,
 }: {
   section: PortfolioSection;
   active: boolean;
   onSelect: () => void;
   onToggle: () => void;
+  onMove: (direction: -1 | 1) => void;
+  first: boolean;
+  last: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: section.id });
@@ -107,6 +113,22 @@ function SortableSection({
       >
         {section.visible ? <Eye /> : <EyeSlash />}
       </button>
+      <div className="section-order-actions">
+        <button
+          aria-label={`Move ${section.title || section.type} up`}
+          disabled={first}
+          onClick={() => onMove(-1)}
+        >
+          <ArrowUp size={13} />
+        </button>
+        <button
+          aria-label={`Move ${section.title || section.type} down`}
+          disabled={last}
+          onClick={() => onMove(1)}
+        >
+          <ArrowDown size={13} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -171,6 +193,7 @@ function Slider({
 
 export function Editor() {
   const { id = "" } = useParams();
+  const [params] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const state = useProject(id);
@@ -189,8 +212,18 @@ export function Editor() {
   const [tab, setTab] = useState<"chat" | "design" | "sections">("chat");
   const [selected, setSelected] = useState<SelectedElement | null>(null);
   const [width, setWidth] = useState(1140);
-  const [preview, setPreview] = useState(false);
+  const [preview, setPreview] = useState(params.get("preview") === "1");
   const [sidebar, setSidebar] = useState(() => window.innerWidth > 760);
+  const [showGuide, setShowGuide] = useState(() => {
+    try {
+      return (
+        localStorage.getItem("portfolio-studio:editor-guide-dismissed") !==
+        "true"
+      );
+    } catch {
+      return true;
+    }
+  });
   const [addSection, setAddSection] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
@@ -352,7 +385,20 @@ export function Editor() {
   const askAi = async () => {
     if (!document || !prompt.trim() || busy) return;
     if (!user) {
-      setError("Sign in to use AI. Your draft will come with you.");
+      try {
+        sessionStorage.setItem(
+          `portfolio-studio:brief:${id}`,
+          JSON.stringify({
+            cv: brief?.cv || "",
+            prompt: prompt.trim(),
+            pending: true,
+          }),
+        );
+        const saved = await save();
+        if (saved) navigate(`/auth?mode=signup&draft=${id}`);
+      } catch (e) {
+        setError(message(e));
+      }
       return;
     }
     setBusy(true);
@@ -389,29 +435,6 @@ export function Editor() {
   const saveAndGo = async (to: string) => {
     const saved = await save();
     if (saved) navigate(to);
-  };
-  const saveToAccount = async () => {
-    if (!project) return;
-    if (!user) {
-      navigate(`/auth?mode=signup&draft=${project.id}`);
-      return;
-    }
-    setBusy(true);
-    try {
-      const result = await projectsApi.create(project.document, project.aiMode);
-      const stored = sessionStorage.getItem(`portfolio-studio:brief:${id}`);
-      if (stored)
-        sessionStorage.setItem(
-          `portfolio-studio:brief:${result.project.id}`,
-          stored,
-        );
-      removeDraft(id);
-      navigate(`/editor/${result.project.id}`, { replace: true });
-    } catch (e) {
-      setError(message(e));
-    } finally {
-      setBusy(false);
-    }
   };
   if (!project || !document)
     return (
@@ -511,17 +534,42 @@ export function Editor() {
           <button
             className="button primary small"
             disabled={busy || !!proposal}
-            onClick={() =>
-              id.startsWith("local_")
-                ? void saveToAccount()
-                : void saveAndGo(`/publish/${id}`)
-            }
+            onClick={() => void saveAndGo(`/publish/${id}`)}
           >
-            {id.startsWith("local_") ? "Save & publish" : "Publish"}
+            Publish
             <ArrowRight />
           </button>
         </div>
       </header>
+      {!preview && !project.publishedAt && (
+        <div className="editor-workshop-bar">
+          <WorkshopSteps current="personalise" projectId={id} />
+        </div>
+      )}
+      {!preview && showGuide && (
+        <div className="workshop-help">
+          <p>
+            <strong>Make it yours.</strong> Click text to edit it, or ask AI for
+            a hand. Check the mobile preview, then publish when you’re ready.
+          </p>
+          <button
+            className="text-button"
+            onClick={() => {
+              setShowGuide(false);
+              try {
+                localStorage.setItem(
+                  "portfolio-studio:editor-guide-dismissed",
+                  "true",
+                );
+              } catch {
+                /* optional preference */
+              }
+            }}
+          >
+            Got it
+          </button>
+        </div>
+      )}
       {error && (
         <div className="editor-notice">
           <Notice>
@@ -593,20 +641,19 @@ export function Editor() {
                       <span className="ai-glyph">
                         <Sparkle size={25} />
                       </span>
-                      <h2>
-                        A little help,
-                        <br />
-                        whenever you need it.
-                      </h2>
+                      <h2>Your work. Your words.</h2>
                       <p>
-                        Tell me what you’d like to change. Or select something
-                        on your page to focus on just that part.
+                        {project.aiMode === "society"
+                          ? "Society AI is ready to help. "
+                          : "Your assistant is ready to help. "}
+                        Describe a change, or select part of your page to focus
+                        on it.
                       </p>
                       <div className="suggestions">
                         {[
-                          "Make this feel more editorial",
-                          "Help me write an introduction",
-                          "Add a section for my projects",
+                          "Help me improve my introduction",
+                          "Make my project descriptions clearer",
+                          "Give my design a more personal feel",
                         ].map((p) => (
                           <button
                             key={p}
@@ -664,6 +711,12 @@ export function Editor() {
                     </div>
                   )}
                 </div>
+                {!user && (
+                  <p className="ai-signin-hint">
+                    Create a free Studio account to use AI. Your draft comes
+                    with you.
+                  </p>
+                )}
                 {brief?.cv && (
                   <label className="cv-consent">
                     <input
@@ -748,7 +801,9 @@ export function Editor() {
                     <Plus />
                   </button>
                 </div>
-                <p className="panel-help">Drag to rearrange. Select to edit.</p>
+                <p className="panel-help">
+                  Drag or use the arrows to reorder. Select to edit.
+                </p>
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
@@ -758,11 +813,23 @@ export function Editor() {
                     items={document.sections.map((s) => s.id)}
                     strategy={verticalListSortingStrategy}
                   >
-                    {document.sections.map((s) => (
+                    {document.sections.map((s, index) => (
                       <SortableSection
                         key={s.id}
                         section={s}
                         active={selected?.sectionId === s.id}
+                        first={index === 0}
+                        last={index === document.sections.length - 1}
+                        onMove={(direction) =>
+                          change({
+                            ...document,
+                            sections: arrayMove(
+                              document.sections,
+                              index,
+                              index + direction,
+                            ),
+                          })
+                        }
                         onSelect={() => {
                           setSelected({ sectionId: s.id, field: "section" });
                           setTab("design");

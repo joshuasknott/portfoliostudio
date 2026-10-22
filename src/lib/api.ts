@@ -148,7 +148,7 @@ export const projectsApi = {
       method: "POST",
       body: JSON.stringify({ expectedRevision }),
     }),
-  publish: (id: string, slug: string, expectedRevision: number) =>
+  publish: (id: string, slug: string | undefined, expectedRevision: number) =>
     api<{ project: Project; publicUrl: string }>(`/projects/${id}/publish`, {
       method: "POST",
       body: JSON.stringify({ slug, expectedRevision }),
@@ -193,6 +193,25 @@ export function removeDraft(id: string): void {
     STORAGE_KEY,
     JSON.stringify(getDrafts().filter((p) => p.id !== id)),
   );
+}
+export async function saveDraftToAccount(draft: Project): Promise<Project> {
+  const { project } = await projectsApi.create(draft.document, draft.aiMode);
+  // The saved project is authoritative even if optional browser storage is unavailable.
+  try {
+    const brief = sessionStorage.getItem(`portfolio-studio:brief:${draft.id}`);
+    if (brief) {
+      sessionStorage.setItem(`portfolio-studio:brief:${project.id}`, brief);
+      sessionStorage.removeItem(`portfolio-studio:brief:${draft.id}`);
+    }
+  } catch {
+    /* CV text remains local; saving a portfolio must still succeed. */
+  }
+  try {
+    removeDraft(draft.id);
+  } catch {
+    /* Keep the local copy if storage is unavailable. */
+  }
+  return project;
 }
 export function createDraft(
   document: PortfolioDocument,

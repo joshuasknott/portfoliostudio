@@ -1,10 +1,36 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getTemplate } from "../src/data/templates";
-import { projectsApi } from "../src/lib/api";
+import {
+  createDraft,
+  getDrafts,
+  projectsApi,
+  saveDraftToAccount,
+} from "../src/lib/api";
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("cloud project duplication", () => {
+  it("keeps a successful cloud save usable when optional session storage is unavailable", async () => {
+    const stored = new Map<string, string>();
+    vi.stubGlobal("document", { cookie: "" });
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => stored.set(key, value),
+    });
+    vi.stubGlobal("sessionStorage", {
+      getItem: () => {
+        throw new Error("Session storage unavailable");
+      },
+    });
+    const draft = createDraft(structuredClone(getTemplate("cobalt").document));
+    const cloud = { ...draft, id: "project_saved", revision: 1 };
+    const fetchMock = vi.fn(async () => Response.json({ project: cloud }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(saveDraftToAccount(draft)).resolves.toEqual(cloud);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getDrafts()).toEqual([]);
+  });
   it("copies uploaded media once into the new project so deleting the original cannot break it", async () => {
     vi.stubGlobal("document", { cookie: "" });
     const original = structuredClone(getTemplate("cobalt").document);

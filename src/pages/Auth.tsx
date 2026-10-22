@@ -7,8 +7,7 @@ import {
   authApi,
   getDrafts,
   message,
-  projectsApi,
-  removeDraft,
+  saveDraftToAccount,
 } from "../lib/api";
 import { useAuth } from "../lib/auth";
 export function Auth() {
@@ -17,7 +16,11 @@ export function Auth() {
   const { setUser } = useAuth();
   const [signup, setSignup] = useState(params.get("mode") === "signup");
   const [reset, setReset] = useState(false);
-  const [name, setName] = useState("");
+  const [name, setName] = useState(
+    () =>
+      getDrafts().find((draft) => draft.id === params.get("draft"))?.document
+        .profile.name || "",
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -29,17 +32,11 @@ export function Auth() {
     const draftId = params.get("draft");
     const draft = draftId ? getDrafts().find((p) => p.id === draftId) : null;
     if (draft) {
-      const { project } = await projectsApi.create(
-        draft.document,
-        draft.aiMode,
+      const project = await saveDraftToAccount(draft);
+      navigate(
+        `/${params.get("intent") === "publish" ? "publish" : "editor"}/${project.id}`,
+        { replace: true },
       );
-      const brief = sessionStorage.getItem(
-        `portfolio-studio:brief:${draft.id}`,
-      );
-      if (brief)
-        sessionStorage.setItem(`portfolio-studio:brief:${project.id}`, brief);
-      removeDraft(draft.id);
-      navigate(`/editor/${project.id}`, { replace: true });
     } else {
       const next = params.get("next");
       navigate(

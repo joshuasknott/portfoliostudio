@@ -190,7 +190,10 @@ export function App() {
             path="/editor/:id"
             element={<Editor key={location.pathname} />}
           />
-          <Route path="/publish/:id" element={<Publish />} />
+          <Route
+            path="/publish/:id"
+            element={<Publish key={location.pathname} />}
+          />
           <Route path="/settings/:id" element={<Settings />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/admin/setup" element={<AdminSetup />} />

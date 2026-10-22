@@ -1,91 +1,148 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   ArrowRight,
   Check,
   FileText,
-  Key,
   Sparkle,
   UploadSimple,
-  UserCircle,
 } from "@phosphor-icons/react";
 import { Brand, Notice } from "../components/ui";
+import { WorkshopSteps } from "../components/WorkshopSteps";
 import { DesignGallery } from "./Designs";
 import { blankPortfolio, createFromTemplate } from "../data/templates";
-import { createDraft, message } from "../lib/api";
+import { createDraft, message, removeDraft } from "../lib/api";
 import { readCv } from "../lib/import";
-import type { AiMode, PortfolioDocument } from "../../shared/portfolio";
-export function AiChoices({
-  value,
-  onChange,
-}: {
-  value: AiMode;
-  onChange: (mode: AiMode) => void;
-}) {
-  return (
-    <div className="ai-choices">
-      {(
-        [
-          {
-            id: "society",
-            icon: Sparkle,
-            title: "Use Surrey AI Society AI",
-            text: "A shared allowance to help you get started.",
-            tag: "Recommended",
-          },
-          {
-            id: "account",
-            icon: UserCircle,
-            title: "Connect an AI account",
-            text: "Available only where a provider supports account access.",
-            tag: "Provider dependent",
-          },
-          {
-            id: "key",
-            icon: Key,
-            title: "Use your own API key",
-            text: "Connect your own allowance. Your key stays private.",
-            tag: "",
-          },
-        ] as const
-      ).map((option) => (
-        <button
-          key={option.id}
-          className={`ai-choice ${value === option.id ? "selected" : ""}`}
-          onClick={() => onChange(option.id)}
-        >
-          <option.icon size={24} />
-          <span>
-            <strong>{option.title}</strong>
-            <small>{option.text}</small>
-            {option.tag && <em>{option.tag}</em>}
-          </span>
-          <span className="radio-dot">
-            {value === option.id && <Check size={12} />}
-          </span>
-        </button>
-      ))}
-    </div>
-  );
+import {
+  entryIntentFromParams,
+  matchesEntryIntent,
+  normalizeStoredEntryIntent,
+  type OnboardingEntryIntent,
+} from "../lib/onboarding-session";
+import type { PortfolioDocument } from "../../shared/portfolio";
+import "./onboarding.css";
+const onboardingStorageKey = "portfolio-studio:onboarding:v1";
+type OnboardingSnapshot = {
+  version: 1;
+  entryIntent: OnboardingEntryIntent;
+  step: number;
+  manual: boolean;
+  name: string;
+  headline: string;
+  bio: string;
+  workedOn: string;
+  cv: string;
+  filename: string;
+  design: string;
+  scratch: boolean;
+  prompt: string;
+};
+function boundedString(value: unknown, max: number): string {
+  return typeof value === "string" ? value.slice(0, max) : "";
+}
+function readOnboardingSnapshot(): OnboardingSnapshot | null {
+  try {
+    const raw = sessionStorage.getItem(onboardingStorageKey);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<OnboardingSnapshot>;
+    if (!value || typeof value !== "object" || value.version !== 1) return null;
+    return {
+      version: 1,
+      entryIntent: normalizeStoredEntryIntent(value.entryIntent),
+      step: value.step === 1 ? 1 : 0,
+      manual: value.manual === true,
+      name: boundedString(value.name, 120),
+      headline: boundedString(value.headline, 240),
+      bio: boundedString(value.bio, 6000),
+      workedOn: boundedString(value.workedOn, 240),
+      cv: boundedString(value.cv, 40_000),
+      filename: boundedString(value.filename, 240),
+      design: boundedString(value.design, 80) || "cobalt",
+      scratch: value.scratch === true,
+      prompt: boundedString(value.prompt, 5000),
+    };
+  } catch {
+    return null;
+  }
 }
 export function Onboarding() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const [step, setStep] = useState(0);
-  const [manual, setManual] = useState(false);
+  const [restored] = useState(readOnboardingSnapshot);
+  const entryIntent = entryIntentFromParams(params);
+  const canRestore = restored
+    ? matchesEntryIntent(entryIntent, restored.entryIntent)
+    : false;
+  const resume = canRestore ? restored : null;
+  const snapshotIntent =
+    entryIntent === "default"
+      ? (restored?.entryIntent ?? entryIntent)
+      : entryIntent;
+  const [step, setStep] = useState(resume?.step || 0);
+  const [manual, setManual] = useState(resume?.manual || false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const input = useRef<HTMLInputElement>(null);
-  const [name, setName] = useState("");
-  const [headline, setHeadline] = useState("");
-  const [bio, setBio] = useState("");
-  const [cv, setCv] = useState("");
-  const [filename, setFilename] = useState("");
-  const [aiMode, setAiMode] = useState<AiMode>("society");
-  const [design, setDesign] = useState(params.get("design") || "cobalt");
-  const [scratch, setScratch] = useState(params.has("scratch"));
-  const [prompt, setPrompt] = useState("");
+  const [name, setName] = useState(resume?.name || "");
+  const [headline, setHeadline] = useState(resume?.headline || "");
+  const [bio, setBio] = useState(resume?.bio || "");
+  const [workedOn, setWorkedOn] = useState(resume?.workedOn || "");
+  const [cv, setCv] = useState(resume?.cv || "");
+  const [filename, setFilename] = useState(resume?.filename || "");
+  const [design, setDesign] = useState(
+    params.get("design")?.trim().toLowerCase() || resume?.design || "cobalt",
+  );
+  const [scratch, setScratch] = useState(
+    entryIntent === "scratch" ||
+      (entryIntent === "default" && resume?.scratch === true),
+  );
+  const [prompt, setPrompt] = useState(resume?.prompt || "");
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        onboardingStorageKey,
+        JSON.stringify({
+          version: 1,
+          entryIntent: snapshotIntent,
+          step,
+          manual,
+          name,
+          headline,
+          bio,
+          workedOn,
+          cv,
+          filename,
+          design,
+          scratch,
+          prompt,
+        } satisfies OnboardingSnapshot),
+      );
+    } catch {
+      /* Private browsing or a full session store can reject optional recovery. */
+    }
+  }, [
+    step,
+    manual,
+    name,
+    headline,
+    bio,
+    workedOn,
+    cv,
+    filename,
+    design,
+    snapshotIntent,
+    scratch,
+    prompt,
+  ]);
+  const startAgain = () => {
+    try {
+      sessionStorage.removeItem(onboardingStorageKey);
+    } catch {
+      /* best effort */
+    }
+    window.location.assign("/new");
+  };
   const upload = async (file?: File) => {
     if (!file) return;
     setBusy(true);
@@ -141,6 +198,30 @@ export function Onboarding() {
               body: profile.bio || "Tell your story here.",
               items: [],
             };
+          if (section.type === "projects" || section.type === "gallery")
+            return {
+              ...section,
+              title: workedOn.trim() ? "Selected work" : section.title,
+              body: "",
+              image: "",
+              imageAlt: "",
+              visible: Boolean(workedOn.trim()),
+              items: workedOn.trim()
+                ? [
+                    {
+                      id: "my-work",
+                      title: workedOn.trim(),
+                      subtitle: "",
+                      description: "",
+                      image: "",
+                      imageAlt: "",
+                      url: "",
+                      tags: [],
+                      date: "",
+                    },
+                  ]
+                : [],
+            };
           if (section.type === "contact")
             return {
               ...section,
@@ -160,12 +241,35 @@ export function Onboarding() {
           };
         }),
       };
-      const project = createDraft(document, aiMode);
-      if (cv || (scratch && prompt))
-        sessionStorage.setItem(
-          `portfolio-studio:brief:${project.id}`,
-          JSON.stringify({ cv, prompt: scratch ? prompt : "", pending: true }),
-        );
+      const project = createDraft(document, "society");
+      const brief = cv || (scratch && prompt);
+      if (brief) {
+        try {
+          sessionStorage.setItem(
+            `portfolio-studio:brief:${project.id}`,
+            JSON.stringify({
+              cv,
+              prompt: scratch ? prompt : "",
+              pending: true,
+            }),
+          );
+        } catch {
+          // Do not leave a duplicate draft behind when optional session storage is full.
+          try {
+            removeDraft(project.id);
+          } catch {
+            /* best effort cleanup */
+          }
+          throw new Error(
+            "Your browser could not save the private creation notes. Please free some session storage and try again.",
+          );
+        }
+      }
+      try {
+        sessionStorage.removeItem(onboardingStorageKey);
+      } catch {
+        /* best effort */
+      }
       navigate(`/editor/${project.id}`);
     } catch (e) {
       setError(message(e));
@@ -176,36 +280,29 @@ export function Onboarding() {
       <header className="app-header">
         <Brand />
         <span className="onboarding-progress">
-          {step + 1} of 3{" "}
-          <span>{["Your story", "AI access", "Your design"][step]}</span>
+          Step {step + 1} of 4{" "}
+          <span>{["Your details", "Choose a design"][step]}</span>
         </span>
       </header>
       <main
-        className={`onboarding ${step === 2 && !scratch ? "onboarding-gallery" : ""}`}
+        className={`onboarding onboarding-simple ${step === 1 && !scratch ? "onboarding-gallery" : ""}`}
       >
+        <WorkshopSteps current={step === 0 ? "details" : "design"} />
+        {resume && (
+          <button className="text-button onboarding-reset" onClick={startAgain}>
+            Start again
+          </button>
+        )}
         <div className="onboarding-heading">
           <span className="eyebrow">
-            {
-              ["FIRST, A LITTLE ABOUT YOU", "A HELPING HAND", "MAKE IT YOURS"][
-                step
-              ]
-            }
+            {["FIRST, A LITTLE ABOUT YOU", "MAKE IT YOURS"][step]}
           </span>
-          <h1>
-            {
-              [
-                "Let’s tell your story.",
-                "Choose your AI.",
-                "Start with a little inspiration.",
-              ][step]
-            }
-          </h1>
+          <h1>{["Let’s start with you.", "Choose a starting point."][step]}</h1>
           <p>
             {
               [
-                "Bring your CV, or start with a few details.",
-                "You can change this at any time.",
-                "Pick a design. Change anything. Or start fresh.",
+                "Bring your CV, or add a few details. You can change everything later.",
+                "Pick one of ten designs, or describe a blank canvas for AI to shape.",
               ][step]
             }
           </p>
@@ -278,6 +375,19 @@ export function Onboarding() {
                   />
                 </label>
                 <label>
+                  One thing you’ve worked on{" "}
+                  <span className="optional">optional</span>
+                  <input
+                    value={workedOn}
+                    onChange={(e) => setWorkedOn(e.target.value)}
+                    maxLength={240}
+                    placeholder="e.g. a society event, coursework or a part-time job"
+                  />
+                  <small className="help-text">
+                    Coursework, volunteering and part-time work all count.
+                  </small>
+                </label>
+                <label>
                   A little about you <span className="optional">optional</span>
                   <textarea
                     value={bio}
@@ -321,18 +431,6 @@ export function Onboarding() {
           </div>
         )}
         {step === 1 && (
-          <div className="onboarding-form">
-            <AiChoices value={aiMode} onChange={setAiMode} />
-            <p className="help-text">
-              {aiMode === "society"
-                ? "Shared usage limits keep this available for everyone. Manual editing is always available."
-                : aiMode === "account"
-                  ? "Consumer subscriptions do not automatically include access here. Check available connections in settings; you can continue with manual editing."
-                  : "Add your key securely in project settings after creating your portfolio."}
-            </p>
-          </div>
-        )}
-        {step === 2 && (
           <>
             <div className="creation-tabs">
               <button
@@ -387,13 +485,13 @@ export function Onboarding() {
                 setManual(true);
                 return;
               }
-              if (step < 2) {
+              if (step < 1) {
                 setStep(step + 1);
                 window.scrollTo(0, 0);
               } else finish();
             }}
           >
-            {step === 2 ? "Open my editor" : "Continue"}
+            {step === 1 ? "Open my editor" : "Continue"}
             <ArrowRight />
           </button>
         </div>

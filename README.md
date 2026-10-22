@@ -9,10 +9,11 @@ A portfolio builder by **Surrey AI Society**. Start with a considered design or 
 - Ten editable portfolio designs with independent visual identities.
 - Local drafts, account sign-in, cloud saves and saved versions.
 - CV text import from PDF, DOCX and TXT, processed in the browser.
+- Guided creation from details to design, personalisation and publishing, with session-only onboarding recovery.
 - Direct text editing, section reordering, images, typography, colours and responsive previews.
 - AI-assisted editing with a review step and changes scoped to a selected element.
-- Society-managed AI and encrypted personal API keys for supported providers.
-- Public portfolio addresses, separately published snapshots and downloadable static websites.
+- Society AI selected automatically for new portfolios, with optional encrypted personal API keys in settings.
+- One-click publishing to an automatically allocated public address, separately published snapshots and downloadable static websites.
 - Custom-subdomain verification and connection when the hosting owner configures Pages API access.
 
 Provider account sign-in is intentionally unavailable until an officially supported integration is configured. A consumer AI subscription does not grant API access. Shared AI and hosting have finite allowances; this project does not promise unlimited inference or capacity.
@@ -61,6 +62,8 @@ Configure `APP_ORIGIN` and `PUBLIC_APP_URL` to the production origin. Set `BYOK_
 The initial owner uses a private, one-time `/admin/setup#<token>` invitation. Configure `ADMIN_BOOTSTRAP_HASH` as the base64url SHA-256 digest of a cryptographically random token; only its hash is stored in the deployment. The invitation grants administrator access to the signed-in account once and cannot be reused. Keep the invitation outside the repository. Additional administrators can be selected by immutable account IDs in `ADMIN_USER_IDS`, never by an unverified email address.
 
 Custom domains require a server-only `PAGES_API_TOKEN` with **Pages Write** for the project account, plus `PAGES_ACCOUNT_ID`, `PAGES_PROJECT_NAME` and `PAGES_PROJECT_SUBDOMAIN`. Students add a TXT ownership proof and a CNAME at their domain registrar. They do not need Cloudflare accounts for a supported subdomain. Apex domains and provider-account transfers are not automated; students can export their website to their own host and repoint their domain.
+
+The workshop publishing path needs no domain or DNS setup: students sign in to Portfolio Studio, then publish to an included `/p/name` address. Address customisation, exports and personal domains remain under **Advanced options**. Publishing a local draft saves it to the account first; subsequent changes keep the same live link.
 
 ## Ownership and data
 
