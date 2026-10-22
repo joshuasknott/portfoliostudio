@@ -176,6 +176,22 @@ function publicProject(project: ProjectRecord): Project {
   } = project;
   return publicRecord;
 }
+const reservedPublicSlugs = new Set([
+  "api",
+  "app",
+  "admin",
+  "www",
+  "login",
+  "signup",
+]);
+function automaticSlugBase(project: ProjectRecord): string {
+  const readableName =
+    text(project.document.profile.name) || text(project.name) || "portfolio";
+  let base = safeSlug(readableName) || "portfolio";
+  if (base.length < 3) base = "portfolio";
+  if (reservedPublicSlugs.has(base)) base = safeSlug(`${base}-portfolio`);
+  return base || "portfolio";
+}
 function publicVersion(version: VersionRecord): ProjectVersion {
   return { id: version.id, label: version.label, createdAt: version.createdAt };
 }
@@ -2166,36 +2182,76 @@ export function createApp(
     const project = await getProject(c.env.DATA!, user.id, c.req.param("id"));
     const body = await readJson(c);
     const expectedRevision = requiredRevision(body.expectedRevision);
-    const slug = safeSlug(text(body.slug) || project.slug || project.name);
-    if (
-      slug.length < 3 ||
-      ["api", "app", "admin", "www", "login", "signup"].includes(slug)
-    )
+    const requestedSlug = text(body.slug);
+    const automatic = !requestedSlug && !project.slug;
+    const baseSlug = automatic
+      ? automaticSlugBase(project)
+      : safeSlug(requestedSlug || project.slug || project.name);
+    if (baseSlug.length < 3 || reservedPublicSlugs.has(baseSlug))
       throw new ApiError(
         400,
         "Choose a different public address.",
         "slug_invalid",
       );
-    const existing = await c.env.DATA!.get<{ projectId: string }>(
-      slugKey(slug),
-    );
-    if (existing && existing.projectId !== project.id)
-      throw new ApiError(
-        409,
-        "That public address is already taken.",
-        "slug_taken",
+    let slug = baseSlug;
+    let targetClaimed = false;
+    const claim = { projectId: project.id, claimToken: newId("slug-claim") };
+    let claimInserted = false;
+    const readableSlugAttempts = 8;
+    const maxSlugAttempts = automatic ? readableSlugAttempts + 1 : 1;
+    for (let attempt = 0; attempt < maxSlugAttempts; attempt += 1) {
+      if (automatic && attempt === readableSlugAttempts) {
+        const idSuffix = project.id.replace(/^project_/i, "").replace(/-/g, "");
+        slug = safeSlug(`${baseSlug.slice(0, 15)}-${idSuffix}`);
+      } else {
+        slug =
+          attempt === 0
+            ? baseSlug
+            : safeSlug(`${baseSlug.slice(0, 42)}-${attempt + 1}`);
+      }
+      if (slug.length < 3 || reservedPublicSlugs.has(slug)) continue;
+      const existing = await c.env.DATA!.get<{ projectId: string }>(
+        slugKey(slug),
       );
-    const targetClaimed =
-      existing?.projectId === project.id
-        ? true
-        : await c.env.DATA!.putIfAbsent(slugKey(slug), {
-            projectId: project.id,
-          });
+      if (existing?.projectId === project.id) {
+        if (project.slug === slug) {
+          targetClaimed = true;
+          break;
+        }
+        if (!automatic)
+          throw new ApiError(
+            409,
+            "That public address is already taken.",
+            "slug_taken",
+          );
+        continue;
+      }
+      if (existing) {
+        if (!automatic)
+          throw new ApiError(
+            409,
+            "That public address is already taken.",
+            "slug_taken",
+          );
+        continue;
+      }
+      if (
+        await c.env.DATA!.putIfAbsent(slugKey(slug), {
+          ...claim,
+        })
+      ) {
+        claimInserted = true;
+        targetClaimed = true;
+        break;
+      }
+    }
     if (!targetClaimed)
       throw new ApiError(
         409,
-        "That public address is already taken.",
-        "slug_taken",
+        automatic
+          ? "We could not allocate a public address. Try publishing again."
+          : "That public address is already taken.",
+        automatic ? "slug_unavailable" : "slug_taken",
       );
     const base = (
       c.env.PUBLIC_APP_URL ??
@@ -2219,8 +2275,13 @@ export function createApp(
         expectedRevision,
       );
     } catch (error) {
-      if (project.slug !== slug && targetClaimed)
-        await c.env.DATA!.delete(slugKey(slug));
+      if (claimInserted && project.slug !== slug) {
+        const latest = await c.env.DATA!.get<ProjectRecord>(
+          projectKey(project.id),
+        );
+        if (!(latest?.slug === slug && latest.publishedAt))
+          await c.env.DATA!.deleteIfValue(slugKey(slug), claim);
+      }
       throw error;
     }
     if (project.slug && project.slug !== slug)

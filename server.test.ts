@@ -242,6 +242,137 @@ describe("Portfolio Studio API", () => {
     expect(publicView.status).toBe(200);
     expect((await publicView.json()).document.name).toBe("One");
   });
+  it("allocates readable automatic addresses and preserves an existing address", async () => {
+    const first = await signup(app, "automatic-one@example.com");
+    const second = await signup(app, "automatic-two@example.com");
+    const create = async (auth: ReturnType<typeof sessionParts>) => {
+      const response = await app.request("/api/projects", {
+        method: "POST",
+        headers: {
+          Cookie: auth.cookie,
+          Origin: "http://localhost",
+          "X-Portfolio-CSRF": auth.csrf,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ document }),
+      });
+      return (await response.json()).project;
+    };
+    const one = await create(first);
+    const two = await create(second);
+    const publish = (
+      auth: ReturnType<typeof sessionParts>,
+      projectId: string,
+      expectedRevision = 1,
+    ) =>
+      app.request(`/api/projects/${projectId}/publish`, {
+        method: "POST",
+        headers: {
+          Cookie: auth.cookie,
+          Origin: "http://localhost",
+          "X-Portfolio-CSRF": auth.csrf,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ expectedRevision }),
+      });
+    const [onePublish, twoPublish] = await Promise.all([
+      publish(first, one.id),
+      publish(second, two.id),
+    ]);
+    expect(onePublish.status).toBe(200);
+    expect(twoPublish.status).toBe(200);
+    const oneSlug = (await onePublish.json()).project.slug;
+    const twoSlug = (await twoPublish.json()).project.slug;
+    expect([oneSlug, twoSlug].sort()).toEqual(["amina-patel", "amina-patel-2"]);
+
+    const updated = await app.request(`/api/projects/${one.id}`, {
+      method: "PATCH",
+      headers: {
+        Cookie: first.cookie,
+        Origin: "http://localhost",
+        "X-Portfolio-CSRF": first.csrf,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        expectedRevision: 2,
+        document: { ...document, name: "Changed draft" },
+      }),
+    });
+    expect(updated.status).toBe(200);
+    const republished = await publish(first, one.id, 3);
+    expect(republished.status).toBe(200);
+    expect((await republished.json()).project.slug).toBe(oneSlug);
+  });
+  it("falls back to a project-derived address after readable suffixes are full", async () => {
+    const store = new MemoryStore();
+    app = createApp(store);
+    const auth = await signup(app, "automatic-saturated@example.com");
+    const created = await app.request("/api/projects", {
+      method: "POST",
+      headers: {
+        Cookie: auth.cookie,
+        Origin: "http://localhost",
+        "X-Portfolio-CSRF": auth.csrf,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ document }),
+    });
+    const project = (await created.json()).project;
+    for (let suffix = 0; suffix <= 8; suffix += 1)
+      await store.put(
+        `slug:${suffix === 0 ? "amina-patel" : `amina-patel-${suffix + 1}`}`,
+        {
+          projectId: `project-other-${suffix}`,
+        },
+      );
+    const published = await app.request(`/api/projects/${project.id}/publish`, {
+      method: "POST",
+      headers: {
+        Cookie: auth.cookie,
+        Origin: "http://localhost",
+        "X-Portfolio-CSRF": auth.csrf,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ expectedRevision: 1 }),
+    });
+    expect(published.status).toBe(200);
+    const slug = (await published.json()).project.slug as string;
+    expect(slug).toMatch(/^amina-patel-[a-f0-9]{32}$/);
+    expect((await app.request(`/api/public/${slug}`)).status).toBe(200);
+  });
+  it("keeps the winning public mapping when the same project publishes concurrently", async () => {
+    const store = new MemoryStore();
+    app = createApp(store);
+    const auth = await signup(app, "automatic-concurrent@example.com");
+    const created = await app.request("/api/projects", {
+      method: "POST",
+      headers: {
+        Cookie: auth.cookie,
+        Origin: "http://localhost",
+        "X-Portfolio-CSRF": auth.csrf,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ document }),
+    });
+    const project = (await created.json()).project;
+    const publish = () =>
+      app.request(`/api/projects/${project.id}/publish`, {
+        method: "POST",
+        headers: {
+          Cookie: auth.cookie,
+          Origin: "http://localhost",
+          "X-Portfolio-CSRF": auth.csrf,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ expectedRevision: 1 }),
+      });
+    const [first, second] = await Promise.all([publish(), publish()]);
+    const winner = first.status === 200 ? first : second;
+    expect(winner.status).toBe(200);
+    const winningSlug = (await winner.json()).project.slug as string;
+    expect((await app.request(`/api/public/${winningSlug}`)).status).toBe(200);
+    expect([first.status, second.status].sort()).toEqual([200, 409]);
+  });
   it("revokes published and custom-domain state when deleting a project", async () => {
     const store = new MemoryStore();
     app = createApp(store);
@@ -797,8 +928,15 @@ describe("Portfolio Studio API", () => {
       outputNeuronsPerMillion: 34_868,
     });
   });
-  it("returns a validated AI document and applies selected edits only", async () => {
+  it("uses Society AI automatically for a fresh account and applies selected edits only", async () => {
     const auth = await signup(app, "ai@example.com");
+    const settings = await app.request("/api/ai/settings", {
+      headers: { Cookie: auth.cookie },
+    });
+    expect((await settings.json()).settings).toMatchObject({
+      mode: "society",
+      hasApiKey: false,
+    });
     const generated = {
       ...document,
       sections: document.sections.map((section) => ({

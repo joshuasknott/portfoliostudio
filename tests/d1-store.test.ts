@@ -48,6 +48,15 @@ function fakeD1(initial: Record<string, unknown> = {}) {
                 current.count += amount;
                 return { meta: { changes: 1 } };
               }
+              if (
+                query.startsWith("DELETE FROM kv WHERE key = ?1 AND value = ?2")
+              ) {
+                const key = String(args[0]);
+                if (values.get(key) !== String(args[1]))
+                  return { meta: { changes: 0 } };
+                values.delete(key);
+                return { meta: { changes: 1 } };
+              }
               const key = String(args[0]);
               if (query.startsWith("INSERT") && values.has(key))
                 throw new Error("UNIQUE constraint failed: kv.key");
@@ -129,5 +138,25 @@ describe("D1Store", () => {
           query.includes("ON CONFLICT"),
       ),
     ).toBe(true);
+  });
+
+  it("deletes a claim only when its value still matches", async () => {
+    const { db } = fakeD1({
+      "slug:claim": { projectId: "project_1", claimToken: "claim_1" },
+    });
+    const store = new D1Store(db);
+    expect(
+      await store.deleteIfValue("slug:claim", {
+        projectId: "other",
+        claimToken: "claim_1",
+      }),
+    ).toBe(false);
+    expect(
+      await store.deleteIfValue("slug:claim", {
+        projectId: "project_1",
+        claimToken: "claim_1",
+      }),
+    ).toBe(true);
+    expect(await store.get("slug:claim")).toBeNull();
   });
 });

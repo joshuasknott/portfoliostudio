@@ -4,6 +4,7 @@ export interface Store {
   get<T>(key: string): Promise<T | null>;
   put<T>(key: string, value: T): Promise<void>;
   delete(key: string): Promise<void>;
+  deleteIfValue<T>(key: string, expected: T): Promise<boolean>;
   list<T>(prefix: string): Promise<Array<{ key: string; value: T }>>;
   putIfAbsent<T>(key: string, value: T): Promise<boolean>;
   /** Atomically consume amount from a bucket, returning false at the cap. */
@@ -38,6 +39,13 @@ export class MemoryStore implements Store {
   }
   async delete(key: string): Promise<void> {
     this.values.delete(key);
+  }
+  async deleteIfValue<T>(key: string, expected: T): Promise<boolean> {
+    const current = this.values.get(key);
+    if (!current || JSON.stringify(current.value) !== JSON.stringify(expected))
+      return false;
+    this.values.delete(key);
+    return true;
   }
   async list<T>(prefix: string): Promise<Array<{ key: string; value: T }>> {
     return [...this.values.entries()]
@@ -133,6 +141,13 @@ export class D1Store implements Store {
   }
   async delete(key: string): Promise<void> {
     await this.db.prepare("DELETE FROM kv WHERE key = ?1").bind(key).run();
+  }
+  async deleteIfValue<T>(key: string, expected: T): Promise<boolean> {
+    const result = await this.db
+      .prepare("DELETE FROM kv WHERE key = ?1 AND value = ?2")
+      .bind(key, JSON.stringify(expected))
+      .run();
+    return (result as { meta?: { changes?: number } }).meta?.changes === 1;
   }
   async list<T>(prefix: string): Promise<Array<{ key: string; value: T }>> {
     // Use an indexed lexicographic range instead of LIKE.  Project keys contain
