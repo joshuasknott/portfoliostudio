@@ -120,14 +120,19 @@ test("editor supports direct edits, style changes, sections and undo", async ({
   const lastHandle = rows.nth(4).locator(".drag-handle");
   await lastHandle.focus();
   await lastHandle.press("Space");
+  await expect(lastHandle).toHaveAttribute("aria-pressed", "true");
   await page.keyboard.press("ArrowUp");
-  await page.keyboard.press("ArrowUp");
-  await page.keyboard.press("ArrowUp");
-  await page.keyboard.press("Space");
-  await expect(rows.filter({ hasText: "Experience" })).toHaveCount(1);
+  await lastHandle.press("Space");
+  await expect(rows.nth(3)).toContainText("Experience");
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(rows.nth(4)).toContainText("Experience");
+
+  const experienceRow = rows.filter({ hasText: "Experience" });
+  await experienceRow.getByRole("button", { name: "Hide section" }).click();
+  await expect(experienceRow).toHaveClass(/hidden-section/);
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(rows).toHaveCount(5);
-  await expect(rows.filter({ hasText: "Selected work" })).toHaveCount(1);
+  await expect(experienceRow).not.toHaveClass(/hidden-section/);
 });
 
 test("editor mobile preview and local website exports work", async ({
