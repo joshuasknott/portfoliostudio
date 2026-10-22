@@ -317,7 +317,44 @@ function providerSupportsReasoning(provider: SocietyAiProvider): boolean {
     supportsProviderReasoning(provider.id, model),
   );
 }
-function providerPublic(provider: SocietyAiProvider) {
+type SocietyAiEnvironment = Pick<
+  Bindings,
+  | "SOCIETY_AI_MAX_INPUT_TOKENS"
+  | "SOCIETY_AI_MAX_OUTPUT_TOKENS"
+  | "SOCIETY_AI_DAILY_NEURONS"
+  | "SOCIETY_AI_DAILY_LIMIT"
+  | "SOCIETY_AI_USER_DAILY_NEURONS"
+  | "SOCIETY_AI_USER_DAILY_LIMIT"
+>;
+
+function providerPublic(
+  provider: SocietyAiProvider,
+  env: SocietyAiEnvironment = {},
+) {
+  const maxInputTokens = configuredNumber(
+    env.SOCIETY_AI_MAX_INPUT_TOKENS,
+    16_384,
+    512,
+    32_768,
+  );
+  const maxOutputTokens = configuredNumber(
+    env.SOCIETY_AI_MAX_OUTPUT_TOKENS,
+    4_096,
+    256,
+    8_192,
+  );
+  const dailyLimit = configuredNumber(
+    env.SOCIETY_AI_DAILY_NEURONS ?? env.SOCIETY_AI_DAILY_LIMIT,
+    9_000,
+    256,
+    2_000_000,
+  );
+  const userDailyLimit = configuredNumber(
+    env.SOCIETY_AI_USER_DAILY_NEURONS ?? env.SOCIETY_AI_USER_DAILY_LIMIT,
+    1_500,
+    256,
+    500_000,
+  );
   return {
     id: provider.id,
     name: provider.name,
@@ -326,13 +363,14 @@ function providerPublic(provider: SocietyAiProvider) {
     reasoning: Boolean(
       provider.reasoning && providerSupportsReasoning(provider),
     ),
-    maxInputTokens: provider.maxInputTokens,
-    maxOutputTokens: provider.maxOutputTokens,
+    maxInputTokens: provider.maxInputTokens ?? maxInputTokens,
+    maxOutputTokens:
+      provider.maxOutputTokens ?? provider.maxRequestTokens ?? maxOutputTokens,
     maxRequestTokens: provider.maxRequestTokens,
-    dailyLimit: provider.dailyLimit,
-    userDailyLimit: provider.userDailyLimit,
-    inputNeuronsPerMillion: provider.inputNeuronsPerMillion,
-    outputNeuronsPerMillion: provider.outputNeuronsPerMillion,
+    dailyLimit: provider.dailyLimit ?? dailyLimit,
+    userDailyLimit: provider.userDailyLimit ?? userDailyLimit,
+    inputNeuronsPerMillion: provider.inputNeuronsPerMillion ?? 4_119,
+    outputNeuronsPerMillion: provider.outputNeuronsPerMillion ?? 34_868,
     hasApiKey: Boolean(provider.encryptedApiKey),
   };
 }
@@ -1234,7 +1272,7 @@ export function createApp(
         configuredSocietyProviders(c.env.SOCIETY_AI_PROVIDERS)
       )
         .filter((provider) => provider.enabled)
-        .map(providerPublic),
+        .map((provider) => providerPublic(provider, c.env)),
     });
   });
   app.post("/api/ai/generate", async (c) => {
@@ -1508,11 +1546,16 @@ export function createApp(
     const configured = await c.env.DATA!.get<AdminAiConfig>(adminAiConfigKey);
     return c.json({
       config: configured
-        ? { ...configured, providers: configured.providers.map(providerPublic) }
+        ? {
+            ...configured,
+            providers: configured.providers.map((provider) =>
+              providerPublic(provider, c.env),
+            ),
+          }
         : {
             providers: configuredSocietyProviders(
               c.env.SOCIETY_AI_PROVIDERS,
-            ).map(providerPublic),
+            ).map((provider) => providerPublic(provider, c.env)),
             updatedAt: null,
           },
     });
@@ -1664,7 +1707,9 @@ export function createApp(
     return c.json({
       config: {
         updatedAt: config.updatedAt,
-        providers: config.providers.map(providerPublic),
+        providers: config.providers.map((provider) =>
+          providerPublic(provider, c.env),
+        ),
       },
     });
   });

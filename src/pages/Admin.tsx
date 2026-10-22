@@ -39,12 +39,12 @@ type Provider = {
 };
 
 const defaults = {
-  maxInputTokens: 12000,
-  maxOutputTokens: 4000,
-  dailyLimit: 100000,
-  userDailyLimit: 10000,
-  inputNeuronsPerMillion: 0,
-  outputNeuronsPerMillion: 0,
+  maxInputTokens: 16_384,
+  maxOutputTokens: 4_096,
+  dailyLimit: 9_000,
+  userDailyLimit: 1_500,
+  inputNeuronsPerMillion: 4_119,
+  outputNeuronsPerMillion: 34_868,
 };
 
 function normalizeProvider(provider: Partial<Provider>): Provider {

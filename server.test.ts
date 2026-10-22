@@ -730,6 +730,73 @@ describe("Portfolio Studio API", () => {
     );
     expect(other.status).toBe(409);
   });
+  it("returns effective AI allowance defaults while preserving configured limits", async () => {
+    const token = "admin-config-token-" + "x".repeat(32);
+    const adminHash = await hashToken(token);
+    const auth = await signup(app, "config-admin@example.com");
+    const claim = await app.request(
+      "/api/admin/claim",
+      {
+        method: "POST",
+        headers: {
+          Cookie: auth.cookie,
+          Origin: "http://localhost",
+          "X-Portfolio-CSRF": auth.csrf,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ token }),
+      },
+      {
+        ADMIN_BOOTSTRAP_HASH: adminHash,
+        SOCIETY_AI_PROVIDERS: JSON.stringify([
+          {
+            id: "workers-ai",
+            name: "Surrey AI Society AI",
+            enabled: true,
+            models: ["model"],
+            maxInputTokens: 1_111,
+            dailyLimit: 7_777,
+          },
+        ]),
+        SOCIETY_AI_MAX_INPUT_TOKENS: "12345",
+        SOCIETY_AI_MAX_OUTPUT_TOKENS: "2222",
+        SOCIETY_AI_DAILY_NEURONS: "8888",
+        SOCIETY_AI_USER_DAILY_NEURONS: "888",
+      },
+    );
+    expect(claim.status).toBe(200);
+    const response = await app.request(
+      "/api/admin/ai/config",
+      { headers: { Cookie: auth.cookie } },
+      {
+        ADMIN_BOOTSTRAP_HASH: adminHash,
+        SOCIETY_AI_PROVIDERS: JSON.stringify([
+          {
+            id: "workers-ai",
+            name: "Surrey AI Society AI",
+            enabled: true,
+            models: ["model"],
+            maxInputTokens: 1_111,
+            dailyLimit: 7_777,
+          },
+        ]),
+        SOCIETY_AI_MAX_INPUT_TOKENS: "12345",
+        SOCIETY_AI_MAX_OUTPUT_TOKENS: "2222",
+        SOCIETY_AI_DAILY_NEURONS: "8888",
+        SOCIETY_AI_USER_DAILY_NEURONS: "888",
+      },
+    );
+    expect(response.status).toBe(200);
+    const provider = (await response.json()).config.providers[0];
+    expect(provider).toMatchObject({
+      maxInputTokens: 1_111,
+      maxOutputTokens: 2_222,
+      dailyLimit: 7_777,
+      userDailyLimit: 888,
+      inputNeuronsPerMillion: 4_119,
+      outputNeuronsPerMillion: 34_868,
+    });
+  });
   it("returns a validated AI document and applies selected edits only", async () => {
     const auth = await signup(app, "ai@example.com");
     const generated = {
