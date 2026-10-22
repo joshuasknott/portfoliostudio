@@ -57,20 +57,27 @@ async function serveArchive(buffer: Buffer) {
   };
 }
 
-async function createLocalDraft(page: Page) {
+async function createLocalDraft(
+  page: Page,
+  name = "Cloud QA",
+  workedOn = "Surrey open source map",
+) {
   await page.goto("/new");
   await page
     .getByRole("button", { name: /I’ll enter my details instead/ })
     .click();
-  await page.locator('input[placeholder*="Amina Patel"]').fill("Cloud QA");
+  await page.locator('input[placeholder*="Amina Patel"]').fill(name);
   await page
     .locator('input[placeholder*="Computer science"]')
     .fill("Software engineering student");
+  await page.locator('input[placeholder*="society event"]').fill(workedOn);
   await page.locator("textarea").fill("Testing the saved portfolio flow.");
   await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByText("Choose a starting point.")).toBeVisible();
+  await expect(page.getByText("Choose your AI.")).toHaveCount(0);
   await page.getByRole("button", { name: "Choose Cobalt" }).click();
   await page.getByRole("button", { name: "Open my editor" }).click();
+  await expect(page.locator(".workshop-steps")).toContainText("Personalise");
   await expect(
     page
       .frameLocator('iframe[title="Editable portfolio canvas"]')
@@ -89,7 +96,15 @@ test("signup, cloud persistence, publishing, recovery and ownership flow", async
   const password = "Cloud QA password 2026!";
   const newPassword = "Cloud QA recovery 2026!";
 
-  await page.goto(`/auth?mode=signup&draft=${draftId}`);
+  await page.goto(`/publish/${draftId}`);
+  await expect(page.getByText("Ready to share")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Save & publish/ }),
+  ).toHaveAttribute("href", new RegExp(`draft=${draftId}.*intent=publish`));
+  await page.getByRole("link", { name: /Save & publish/ }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/auth\\?mode=signup&draft=${draftId}.*intent=publish`),
+  );
   await page.locator('input[autocomplete="name"]').fill("Cloud QA");
   await page.locator('input[type="email"]').fill(email);
   await page.locator('input[type="password"]').fill(password);
@@ -106,14 +121,21 @@ test("signup, cloud persistence, publishing, recovery and ownership flow", async
   expect(await readFile(recoveryPath, "utf8")).toContain(recoveryCode);
 
   await page.getByRole("button", { name: "I’ve saved it. Continue" }).click();
-  await expect(page).toHaveURL(/\/editor\/(?!local_)/);
+  await expect(page).toHaveURL(/\/publish\/(?!local_)/);
   const projectId = page.url().split("/").pop()!;
+  const projectList = await page.request.get("/api/projects");
+  expect(projectList.ok()).toBeTruthy();
+  const projectRecord = (await projectList.json()).projects.find(
+    (candidate: { id: string }) => candidate.id === projectId,
+  );
+  expect(projectRecord?.aiMode).toBe("society");
   expect(
     await page.evaluate(() =>
       JSON.parse(localStorage.getItem("portfolio-studio:drafts:v1") || "[]"),
     ),
   ).toHaveLength(0);
 
+  await page.goto(`/editor/${projectId}`);
   const canvas = page.frameLocator('iframe[title="Editable portfolio canvas"]');
   const hero = canvas.getByRole("heading", {
     name: "Software engineering student",
@@ -179,17 +201,16 @@ test("signup, cloud persistence, publishing, recovery and ownership flow", async
   await expect(page.getByRole("status")).toContainText("Restored");
 
   await page.goto(`/publish/${projectId}`);
-  await expect(page.getByText("Choose your public address")).toBeVisible();
-  const slug = `cloud-qa-${Date.now()}`;
-  await page.getByLabel("Public portfolio slug").fill(slug);
+  await expect(page.getByText("Ready to share")).toBeVisible();
+  await expect(page.getByLabel("Public portfolio slug")).toBeHidden();
   await page.getByRole("button", { name: "Publish portfolio" }).click();
-  await expect(page.getByRole("status")).toContainText(
-    "Your portfolio is live.",
+  await expect(page.locator(".publish-success")).toContainText(
+    "Live and ready to share",
   );
   const publicHref = await page
     .locator(".published-address a")
     .getAttribute("href");
-  expect(publicHref).toMatch(/\/p\/cloud-qa-/);
+  expect(publicHref).toMatch(/\/p\/[a-z0-9-]+$/);
   // Keep local QA on the active test origin if a persisted development env
   // advertises a different local port.
   const publishedPath = new URL(publicHref!, page.url());
@@ -199,6 +220,7 @@ test("signup, cloud persistence, publishing, recovery and ownership flow", async
     fullPage: true,
   });
 
+  await page.getByText("Advanced options", { exact: true }).click();
   const websiteDownload = page
     .waitForEvent("download", { timeout: 15_000 })
     .catch(() => null);
@@ -262,6 +284,7 @@ test("signup, cloud persistence, publishing, recovery and ownership flow", async
   await expect(
     publicPage.getByRole("heading", { name: "Cloud product engineer" }),
   ).toBeVisible();
+  await expect(publicPage.getByText("Surrey open source map")).toBeVisible();
   await expect(
     publicPage.getByText("Portfolio Studio", { exact: true }),
   ).toHaveCount(0);
@@ -304,9 +327,10 @@ test("signup, cloud persistence, publishing, recovery and ownership flow", async
   ).toHaveCount(0);
 
   await page.goto(`/publish/${projectId}`);
+  await page.getByText("Advanced options", { exact: true }).click();
   await page.getByRole("button", { name: "Publish latest changes" }).click();
-  await expect(page.getByRole("status")).toContainText(
-    "Your portfolio is live.",
+  await expect(page.locator(".publish-success")).toContainText(
+    "Live and ready to share",
   );
   await publicPage.reload();
   await expect(
@@ -331,6 +355,36 @@ test("signup, cloud persistence, publishing, recovery and ownership flow", async
   await page.getByLabel("Password").fill(newPassword);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+
+  const signedInDraftId = await createLocalDraft(
+    page,
+    "Signed-in local QA",
+    "A second local project",
+  );
+  await page.goto(`/publish/${signedInDraftId}`);
+  await expect(
+    page.getByRole("button", { name: "Publish portfolio" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Publish portfolio" }).click();
+  await expect(page).toHaveURL(/\/publish\/(?!local_)/);
+  const signedInProjectId = page.url().split("/").pop()!;
+  await expect(page.locator(".publish-success")).toBeVisible();
+  await page.reload();
+  await expect(page).toHaveURL(new RegExp(`/publish/${signedInProjectId}$`));
+  await page.getByRole("link", { name: "Back to editor" }).click();
+  await expect(page).toHaveURL(new RegExp(`/editor/${signedInProjectId}$`));
+  await page.goto("/dashboard");
+  await page
+    .getByRole("button", { name: /Options for Signed-in local QA/ })
+    .click();
+  await page.getByRole("button", { name: "Delete" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Delete portfolio" })
+    .click();
+  await expect(
+    page.getByText("Signed-in local QA’s portfolio", { exact: true }),
+  ).toHaveCount(0);
 
   await page
     .getByRole("button", { name: "Options for Cloud QA’s portfolio" })

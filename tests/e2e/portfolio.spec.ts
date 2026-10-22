@@ -13,14 +13,19 @@ async function completeManualOnboarding(page: Page, name = "Jordan Lee") {
   await page
     .locator("textarea")
     .fill("I build clear tools for people who are learning.");
+  await expect(page.locator(".workshop-steps")).toContainText("Add details");
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByText("Choose your AI.")).toBeVisible();
-  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByText("Choose a starting point.")).toBeVisible();
+  await expect(page.getByText("Choose your AI.")).toHaveCount(0);
+  await expect(page.locator(".workshop-steps")).toContainText("Choose design");
   await expect(
-    page.getByText("Start with a little inspiration."),
+    page.getByText(
+      "Pick one of ten designs, or describe a blank canvas for AI to shape.",
+    ),
   ).toBeVisible();
   await page.getByRole("button", { name: "Choose Cobalt" }).click();
   await page.getByRole("button", { name: "Open my editor" }).click();
+  await expect(page.locator(".workshop-steps")).toContainText("Personalise");
   const canvas = page.frameLocator('iframe[title="Editable portfolio canvas"]');
   await expect(
     canvas.getByRole("heading", { name: "Software engineering student" }),
@@ -67,8 +72,12 @@ test("onboarding supports manual details and CV text review", async ({
     .locator("textarea")
     .fill("I build clear tools for people who are learning.");
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByText("Use Surrey AI Society AI")).toBeVisible();
+  await expect(page.getByText("Choose a starting point.")).toBeVisible();
+  await expect(page.getByText("Choose your AI.")).toHaveCount(0);
 
+  await page.evaluate(() =>
+    sessionStorage.removeItem("portfolio-studio:onboarding:v1"),
+  );
   await page.goto("/new");
   const cvPath = testInfo.outputPath("sample-cv.txt");
   await writeFile(
@@ -81,6 +90,44 @@ test("onboarding supports manual details and CV text review", async ({
   await expect(page.locator("details[open] textarea")).toHaveValue(
     /accessible campus map/,
   );
+});
+
+test("guest scratch brief reaches the editor without an automatic AI request", async ({
+  page,
+}) => {
+  let aiRequests = 0;
+  page.on("request", (request) => {
+    if (request.url().includes("/api/ai/generate")) aiRequests += 1;
+  });
+  const prompt =
+    "A quiet editorial portfolio for a landscape architecture student.";
+  await page.goto("/new");
+  await page
+    .getByRole("button", { name: /I’ll enter my details instead/ })
+    .click();
+  await page.locator('input[placeholder*="Amina Patel"]').fill("Scratch QA");
+  await page
+    .locator('input[placeholder*="Computer science"]')
+    .fill("Landscape architecture student");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByText("Choose a starting point.")).toBeVisible();
+  await page.getByRole("button", { name: "Create from scratch" }).click();
+  await page.locator('textarea[placeholder*="clean, editorial"]').fill(prompt);
+  await page.getByRole("button", { name: "Open my editor" }).click();
+  await expect(
+    page.locator('textarea[aria-label="Ask AI to change your portfolio"]'),
+  ).toHaveValue(prompt);
+  await expect(
+    page.getByText("Create a free Studio account to use AI."),
+  ).toBeVisible();
+  expect(aiRequests).toBe(0);
+  const brief = await page.evaluate(() => {
+    const key = Object.keys(sessionStorage).find((entry) =>
+      entry.startsWith("portfolio-studio:brief:"),
+    );
+    return key ? JSON.parse(sessionStorage.getItem(key) || "null") : null;
+  });
+  expect(brief?.prompt).toBe(prompt);
 });
 
 test("editor supports direct edits, style changes, sections and undo", async ({
@@ -136,6 +183,12 @@ test("editor supports direct edits, style changes, sections and undo", async ({
   await expect(rows.nth(4)).toContainText("Experience");
 
   const experienceRow = rows.filter({ hasText: "Experience" });
+  await experienceRow
+    .getByRole("button", { name: "Move Experience up" })
+    .click();
+  await expect(rows.nth(3)).toContainText("Experience");
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(rows.nth(4)).toContainText("Experience");
   await experienceRow.getByRole("button", { name: "Hide section" }).click();
   await expect(experienceRow).toHaveClass(/hidden-section/);
   await page.getByRole("button", { name: "Undo" }).click();
@@ -158,6 +211,18 @@ test("editor mobile preview and local website exports work", async ({
   });
 
   await page.goto(`/publish/${id}`);
+  await expect(page.getByText("Ready to share")).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBeTruthy();
+  await page.screenshot({
+    path: testInfo.outputPath("publish-mobile.png"),
+    fullPage: true,
+  });
+  await page.getByText("Advanced options", { exact: true }).click();
   await expect(page.getByText("Export your website")).toBeVisible();
   const websiteDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download website" }).click();
