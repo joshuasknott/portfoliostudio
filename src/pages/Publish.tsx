@@ -440,8 +440,7 @@ export function Publish() {
                 </section>
                 <aside className="publish-preview">
                   <div className="preview-heading">
-                    <span className="eyebrow">LIVE PREVIEW</span>
-                    <span className="preview-device">Desktop</span>
+                    <span className="eyebrow">SITE PREVIEW</span>
                   </div>
                   <PortfolioThumbnail
                     document={project.document}
