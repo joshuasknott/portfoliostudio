@@ -2,6 +2,8 @@
 
 A portfolio builder by **Surrey AI Society**. Start with a considered design or a blank canvas, make it your own, and publish a website you can take with you.
 
+[Open Portfolio Studio](https://portfolio-studio-1uu.pages.dev) · [Browse the ten designs](https://portfolio-studio-1uu.pages.dev/designs)
+
 ## Features
 
 - Ten editable portfolio designs with independent visual identities.
@@ -40,6 +42,8 @@ npm run test:e2e
 ```
 
 Backend tests cover ownership boundaries, revision conflicts, published snapshot isolation, account recovery, CSRF, domain verification and AI response validation. Export tests check the generated website archive and editable document. Browser tests exercise the creation and editing flow.
+
+The browser suite runs against an isolated local Wrangler/D1 instance without production credentials or an AI binding. It checks cloud sign-up, direct editing, uploaded media, public publishing, republishing, password recovery and an exported website served with external network access blocked. A separate workload uses 70 independent test accounts to read and save concurrently; this is a local concurrency check, not a guarantee of production capacity or unlimited free-tier usage.
 
 ## Deploy
 

@@ -1,0 +1,155 @@
+import { test, expect, type Page, type TestInfo } from "@playwright/test";
+import { writeFile } from "node:fs/promises";
+
+async function completeManualOnboarding(page: Page, name = "Jordan Lee") {
+  await page.goto("/new");
+  await page
+    .getByRole("button", { name: /I’ll enter my details instead/ })
+    .click();
+  await page.locator('input[placeholder*="Amina Patel"]').fill(name);
+  await page
+    .locator('input[placeholder*="Computer science"]')
+    .fill("Software engineering student");
+  await page
+    .locator("textarea")
+    .fill("I build clear tools for people who are learning.");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByText("Choose your AI.")).toBeVisible();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(
+    page.getByText("Start with a little inspiration."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Choose Cobalt" }).click();
+  await page.getByRole("button", { name: "Open my editor" }).click();
+  const canvas = page.frameLocator('iframe[title="Editable portfolio canvas"]');
+  await expect(
+    canvas.getByRole("heading", { name: "Software engineering student" }),
+  ).toBeVisible();
+  return { canvas, id: page.url().split("/").pop()! };
+}
+
+test("landing page exposes all ten designs and remains usable on mobile", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: /Your work deserves/ }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Explore designs" }).click();
+  await expect(page).toHaveURL(/\/designs$/);
+  await expect(page.locator(".design-card")).toHaveCount(10);
+  await expect(page.getByText("Create from scratch")).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("designs-desktop.png"),
+    fullPage: true,
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".design-card")).toHaveCount(10);
+  await page.screenshot({
+    path: testInfo.outputPath("designs-mobile.png"),
+    fullPage: true,
+  });
+});
+
+test("onboarding supports manual details and CV text review", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/new");
+  await page
+    .getByRole("button", { name: /I’ll enter my details instead/ })
+    .click();
+  await page.locator('input[placeholder*="Amina Patel"]').fill("Jordan Lee");
+  await page
+    .locator('input[placeholder*="Computer science"]')
+    .fill("Software engineering student");
+  await page
+    .locator("textarea")
+    .fill("I build clear tools for people who are learning.");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByText("Use Surrey AI Society AI")).toBeVisible();
+
+  await page.goto("/new");
+  const cvPath = testInfo.outputPath("sample-cv.txt");
+  await writeFile(
+    cvPath,
+    "Jordan Lee\nSoftware engineering student\nExperience: built an accessible campus map.\n",
+  );
+  await page.locator('input[type="file"]').setInputFiles(cvPath);
+  await expect(page.getByText("sample-cv.txt")).toBeVisible();
+  await page.getByText("Review imported text", { exact: true }).click();
+  await expect(page.locator("details[open] textarea")).toHaveValue(
+    /accessible campus map/,
+  );
+});
+
+test("editor supports direct edits, style changes, sections and undo", async ({
+  page,
+}) => {
+  const { canvas } = await completeManualOnboarding(page);
+  const title = canvas.getByRole("heading", {
+    name: "Software engineering student",
+  });
+  await title.click();
+  await title.fill("Creative engineer");
+  await canvas.locator('h1[contenteditable="true"]').blur();
+  await expect(
+    canvas.getByRole("heading", { name: "Creative engineer" }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Edit style" }).click();
+  await expect(page.getByLabel("Heading size")).toHaveValue("86");
+  await page.getByLabel("Heading size").fill("104");
+  await expect(page.getByLabel("Heading size")).toHaveValue("104");
+
+  await page.getByRole("button", { name: "Sections" }).click();
+  const rows = page.locator(".section-row");
+  await expect(rows).toHaveCount(4);
+  await page
+    .locator("aside")
+    .getByRole("button", { name: "Add a section" })
+    .first()
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Experience" })
+    .click();
+  await page.getByRole("button", { name: "Sections" }).click();
+  await expect(rows).toHaveCount(5);
+
+  const lastHandle = rows.nth(4).locator(".drag-handle");
+  await lastHandle.focus();
+  await lastHandle.press("Space");
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("Space");
+  await expect(rows.filter({ hasText: "Experience" })).toHaveCount(1);
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(rows).toHaveCount(5);
+  await expect(rows.filter({ hasText: "Selected work" })).toHaveCount(1);
+});
+
+test("editor mobile preview and local website exports work", async ({
+  page,
+}, testInfo) => {
+  const { id } = await completeManualOnboarding(page, "Export Test");
+  await page.getByRole("button", { name: "Mobile" }).click();
+  await expect(page.getByRole("button", { name: "Mobile" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.screenshot({
+    path: testInfo.outputPath("editor-mobile.png"),
+    fullPage: false,
+  });
+
+  await page.goto(`/publish/${id}`);
+  await expect(page.getByText("Export your website")).toBeVisible();
+  const websiteDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download website" }).click();
+  await expect((await websiteDownload).suggestedFilename()).toMatch(/\.zip$/);
+  const sourceDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download editable source" }).click();
+  await expect((await sourceDownload).suggestedFilename()).toMatch(/\.zip$/);
+});
