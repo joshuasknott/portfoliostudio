@@ -60,7 +60,7 @@ export async function readImage(file: File): Promise<string> {
     quality -= 0.1;
     data = canvas.toDataURL("image/webp", quality);
   }
-  if (data.length > 600000)
+  if (data.length > 530000)
     throw new Error(
       "This image is too detailed to store. Try a smaller image.",
     );

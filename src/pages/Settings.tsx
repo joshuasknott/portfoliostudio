@@ -17,6 +17,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { Header, Loading, Notice } from "../components/ui";
 import { api, loadProject, message, projectsApi, saveDraft } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { syncProfileSections } from "../lib/profile";
 import type {
   AiMode,
   PortfolioDocument,
@@ -225,23 +226,12 @@ export function Settings() {
               url: link.url.trim(),
             })),
         },
-        sections: project.document.sections.map((section) =>
-          section.type === "hero"
-            ? {
-                ...section,
-                title: headline.trim() || section.title,
-                subtitle: safeProfileName,
-                body: bio || section.body,
-              }
-            : section.type === "contact"
-              ? {
-                  ...section,
-                  body: email.trim()
-                    ? `Get in touch at ${email.trim()}.`
-                    : section.body,
-                }
-              : section,
-        ),
+        sections: syncProfileSections(project.document, {
+          name: safeProfileName,
+          headline,
+          bio,
+          email,
+        }),
         seo: {
           title: seoTitle.trim() || `${safeProfileName} — Portfolio`,
           description: seoDescription.trim() || bio.slice(0, 400),

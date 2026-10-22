@@ -63,7 +63,7 @@ export function Footer() {
           target="_blank"
           rel="noreferrer"
         >
-          Open source
+          Source code
         </a>
         <img src="/brand/surrey-ai-logo.png" alt="Surrey AI Society" />
       </span>

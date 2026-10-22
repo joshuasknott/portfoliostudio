@@ -65,7 +65,10 @@ export const projectsApi = {
       field: "image" | "photo";
       data: string;
     }> = [];
-    if (cleaned.profile.photo.startsWith("data:")) {
+    const copyableImage = (url: string) =>
+      url.startsWith("data:") ||
+      /^\/api\/assets\/asset_[A-Za-z0-9-]+$/.test(url);
+    if (copyableImage(cleaned.profile.photo)) {
       inline.push({
         object: cleaned.profile,
         field: "photo",
@@ -74,12 +77,12 @@ export const projectsApi = {
       cleaned.profile.photo = "";
     }
     for (const section of cleaned.sections) {
-      if (section.image.startsWith("data:")) {
+      if (copyableImage(section.image)) {
         inline.push({ object: section, field: "image", data: section.image });
         section.image = "";
       }
       for (const item of section.items)
-        if (item.image.startsWith("data:")) {
+        if (copyableImage(item.image)) {
           inline.push({ object: item, field: "image", data: item.image });
           item.image = "";
         }
@@ -89,8 +92,35 @@ export const projectsApi = {
       body: JSON.stringify({ name: cleaned.name, document: cleaned, aiMode }),
     });
     try {
-      for (const image of inline)
-        image.object[image.field] = await uploadImage(project.id, image.data);
+      const copied = new Map<string, string>();
+      for (const image of inline) {
+        let url = copied.get(image.data);
+        if (!url) {
+          let data = image.data;
+          if (data.startsWith("/api/assets/")) {
+            const response = await fetch(data, { credentials: "same-origin" });
+            const blob = await response.blob();
+            if (
+              !response.ok ||
+              !/^image\/(png|jpeg|webp)$/.test(blob.type) ||
+              blob.size > 400_000
+            )
+              throw new Error(
+                "An image could not be copied. Your original portfolio is unchanged.",
+              );
+            const bytes = new Uint8Array(await blob.arrayBuffer());
+            let binary = "";
+            for (let offset = 0; offset < bytes.length; offset += 8192)
+              binary += String.fromCharCode(
+                ...bytes.subarray(offset, offset + 8192),
+              );
+            data = `data:${blob.type};base64,${btoa(binary)}`;
+          }
+          url = await uploadImage(project.id, data);
+          copied.set(image.data, url);
+        }
+        image.object[image.field] = url;
+      }
       if (!inline.length) return { project };
       return await projectsApi.update({ ...project, document: cleaned });
     } catch (error) {

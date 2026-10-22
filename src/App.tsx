@@ -76,8 +76,8 @@ function Legal({ privacy = false }: { privacy?: boolean }) {
         {privacy ? (
           <>
             <p>
-              Portfolio Studio is an open-source project by Surrey AI Society.
-              We store the account details, portfolio content and settings you
+              Portfolio Studio is a public project by Surrey AI Society. We
+              store the account details, portfolio content and settings you
               choose to save.
             </p>
             <h2>What stays on your device</h2>

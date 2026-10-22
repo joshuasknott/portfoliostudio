@@ -426,7 +426,7 @@ export function Publish() {
                   )}
                 </section>
                 <aside className="publish-preview">
-                  <span className="eyebrow">LIVE PREVIEW</span>
+                  <span className="eyebrow">SITE PREVIEW</span>
                   <PortfolioThumbnail
                     document={project.document}
                     height={420}
