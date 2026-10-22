@@ -118,10 +118,18 @@ test("editor supports direct edits, style changes, sections and undo", async ({
   await expect(rows).toHaveCount(5);
 
   const lastHandle = rows.nth(4).locator(".drag-handle");
+  const liveRegion = page.locator('[id^="DndLiveRegion"]');
   await lastHandle.focus();
   await lastHandle.press("Space");
   await expect(lastHandle).toHaveAttribute("aria-pressed", "true");
+  await expect(liveRegion).toContainText("was moved over droppable area");
+  const initialAnnouncement = await liveRegion.textContent();
   await page.keyboard.press("ArrowUp");
+  await expect
+    .poll(() => liveRegion.textContent(), {
+      message: "dnd-kit should announce the new over-target before drop",
+    })
+    .not.toBe(initialAnnouncement);
   await lastHandle.press("Space");
   await expect(rows.nth(3)).toContainText("Experience");
   await page.getByRole("button", { name: "Undo" }).click();
