@@ -194,8 +194,13 @@ export function removeDraft(id: string): void {
     JSON.stringify(getDrafts().filter((p) => p.id !== id)),
   );
 }
-export async function saveDraftToAccount(draft: Project): Promise<Project> {
+export const retainedDraftNotice =
+  "Your portfolio is saved. Your imported CV or AI brief could not be moved, so the original draft is still in My portfolios on this device.";
+export async function saveDraftToAccount(
+  draft: Project,
+): Promise<{ project: Project; draftRetained: boolean }> {
   const { project } = await projectsApi.create(draft.document, draft.aiMode);
+  let draftRetained = false;
   // The saved project is authoritative even if optional browser storage is unavailable.
   try {
     const brief = sessionStorage.getItem(`portfolio-studio:brief:${draft.id}`);
@@ -204,14 +209,16 @@ export async function saveDraftToAccount(draft: Project): Promise<Project> {
       sessionStorage.removeItem(`portfolio-studio:brief:${draft.id}`);
     }
   } catch {
-    /* CV text remains local; saving a portfolio must still succeed. */
+    draftRetained = true;
   }
-  try {
-    removeDraft(draft.id);
-  } catch {
-    /* Keep the local copy if storage is unavailable. */
+  if (!draftRetained) {
+    try {
+      removeDraft(draft.id);
+    } catch {
+      /* Keep the local copy if storage is unavailable. */
+    }
   }
-  return project;
+  return { project, draftRetained };
 }
 export function createDraft(
   document: PortfolioDocument,

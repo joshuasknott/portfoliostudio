@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Link,
+  useLocation,
   useNavigate,
   useParams,
   useSearchParams,
@@ -194,6 +195,12 @@ function Slider({
 export function Editor() {
   const { id = "" } = useParams();
   const [params] = useSearchParams();
+  const location = useLocation();
+  const [migrationNotice, setMigrationNotice] = useState(
+    typeof location.state?.migrationNotice === "string"
+      ? location.state.migrationNotice
+      : "",
+  );
   const navigate = useNavigate();
   const { user } = useAuth();
   const state = useProject(id);
@@ -600,6 +607,20 @@ export function Editor() {
           </div>
         )}
       </>
+      {migrationNotice && (
+        <div className="editor-notice">
+          <Notice success>
+            {migrationNotice}
+            <button
+              className="icon-button"
+              aria-label="Dismiss saved draft notice"
+              onClick={() => setMigrationNotice("")}
+            >
+              <X />
+            </button>
+          </Notice>
+        </div>
+      )}
       <div className="editor-body">
         {!preview && sidebar && (
           <aside className="editor-sidebar">

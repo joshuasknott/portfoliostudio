@@ -7,6 +7,7 @@ import {
   authApi,
   getDrafts,
   message,
+  retainedDraftNotice,
   saveDraftToAccount,
 } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -32,10 +33,13 @@ export function Auth() {
     const draftId = params.get("draft");
     const draft = draftId ? getDrafts().find((p) => p.id === draftId) : null;
     if (draft) {
-      const project = await saveDraftToAccount(draft);
+      const { project, draftRetained } = await saveDraftToAccount(draft);
       navigate(
         `/${params.get("intent") === "publish" ? "publish" : "editor"}/${project.id}`,
-        { replace: true },
+        {
+          replace: true,
+          state: { migrationNotice: draftRetained ? retainedDraftNotice : "" },
+        },
       );
     } else {
       const next = params.get("next");

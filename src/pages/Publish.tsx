@@ -19,6 +19,7 @@ import {
   loadProject,
   message,
   projectsApi,
+  retainedDraftNotice,
   saveDraftToAccount,
 } from "../lib/api";
 import {
@@ -79,7 +80,11 @@ export function Publish() {
       ? location.state.publishError
       : "",
   );
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(
+    typeof location.state?.migrationNotice === "string"
+      ? location.state.migrationNotice
+      : "",
+  );
   const [copied, setCopied] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const publicUrl =
@@ -151,9 +156,12 @@ export function Publish() {
     setError("");
     setNotice("");
     let target = project;
+    let migrationNotice = "";
     try {
       if (project.id.startsWith("local_")) {
-        target = await saveDraftToAccount(project);
+        const saved = await saveDraftToAccount(project);
+        target = saved.project;
+        migrationNotice = saved.draftRetained ? retainedDraftNotice : "";
         setProject(target);
       }
       const result = await projectsApi.publish(
@@ -164,15 +172,18 @@ export function Publish() {
       setProject(result.project);
       setSlug(result.project.slug || "");
       setPublishedUrl(result.publicUrl);
-      setNotice("Your portfolio is live and ready to share.");
+      setNotice(target.publishedAt ? "Your latest changes are now live." : "");
       if (target.id !== id)
-        navigate(`/publish/${target.id}`, { replace: true });
+        navigate(`/publish/${target.id}`, {
+          replace: true,
+          state: { migrationNotice },
+        });
     } catch (e) {
       setError(message(e));
       if (target.id !== id)
         navigate(`/publish/${target.id}`, {
           replace: true,
-          state: { publishError: message(e) },
+          state: { publishError: message(e), migrationNotice },
         });
     } finally {
       setBusy(false);

@@ -10,27 +10,46 @@ import {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("cloud project duplication", () => {
-  it("keeps a successful cloud save usable when optional session storage is unavailable", async () => {
-    const stored = new Map<string, string>();
-    vi.stubGlobal("document", { cookie: "" });
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) => stored.get(key) ?? null,
-      setItem: (key: string, value: string) => stored.set(key, value),
-    });
-    vi.stubGlobal("sessionStorage", {
-      getItem: () => {
-        throw new Error("Session storage unavailable");
-      },
-    });
-    const draft = createDraft(structuredClone(getTemplate("cobalt").document));
-    const cloud = { ...draft, id: "project_saved", revision: 1 };
-    const fetchMock = vi.fn(async () => Response.json({ project: cloud }));
-    vi.stubGlobal("fetch", fetchMock);
+  it.each(["read", "write"])(
+    "preserves the source draft when brief storage cannot %s during a cloud save",
+    async (failure) => {
+      const stored = new Map<string, string>();
+      vi.stubGlobal("document", { cookie: "" });
+      vi.stubGlobal("localStorage", {
+        getItem: (key: string) => stored.get(key) ?? null,
+        setItem: (key: string, value: string) => stored.set(key, value),
+      });
+      vi.stubGlobal("sessionStorage", {
+        getItem: () => {
+          if (failure === "read")
+            throw new Error("Session storage unavailable");
+          return JSON.stringify({
+            cv: "Imported test CV",
+            prompt: "An editorial design",
+          });
+        },
+        setItem: () => {
+          throw new Error("Session storage full");
+        },
+        removeItem: () => {
+          throw new Error("The original brief must be preserved");
+        },
+      });
+      const draft = createDraft(
+        structuredClone(getTemplate("cobalt").document),
+      );
+      const cloud = { ...draft, id: "project_saved", revision: 1 };
+      const fetchMock = vi.fn(async () => Response.json({ project: cloud }));
+      vi.stubGlobal("fetch", fetchMock);
 
-    await expect(saveDraftToAccount(draft)).resolves.toEqual(cloud);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(getDrafts()).toEqual([]);
-  });
+      await expect(saveDraftToAccount(draft)).resolves.toEqual({
+        project: cloud,
+        draftRetained: true,
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(getDrafts()).toEqual([draft]);
+    },
+  );
   it("copies uploaded media once into the new project so deleting the original cannot break it", async () => {
     vi.stubGlobal("document", { cookie: "" });
     const original = structuredClone(getTemplate("cobalt").document);
