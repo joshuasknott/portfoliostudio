@@ -26,7 +26,7 @@ npm run db:migrate
 npm run dev:api
 ```
 
-Open `http://localhost:8787`. For frontend development, run `npm run dev` in a second terminal; Vite proxies API requests to port 8787. Rebuild the Worker after server changes with `node scripts/build-worker.mjs`.
+Open `http://127.0.0.1:8787`. For frontend development, run `npm run dev` in a second terminal; Vite proxies API requests to port 8787. Rebuild the Worker after server changes with `node scripts/build-worker.mjs`.
 
 Local D1 data lives in the ignored `.wrangler/` directory. Copy the relevant settings from `.env.example` to `.dev.vars` for Wrangler. Use the same hostname consistently for cookies and origin checks. The AI binding uses Cloudflare remotely, so AI requests during local development use the configured Cloudflare allowance.
 
@@ -54,13 +54,15 @@ npm run deploy
 
 Configure `APP_ORIGIN` and `PUBLIC_APP_URL` to the production origin. Set `BYOK_ENCRYPTION_KEY` as a random server secret before accepting personal/provider keys. Never put secrets in `VITE_` variables or commit `.dev.vars`.
 
-Administrators are selected by immutable account IDs in `ADMIN_USER_IDS`, not an unverified email address. Create the intended account, obtain its ID from the authenticated session response, and configure that ID before using `/admin`.
+The initial owner uses a private, one-time `/admin/setup#<token>` invitation. Configure `ADMIN_BOOTSTRAP_HASH` as the base64url SHA-256 digest of a cryptographically random token; only its hash is stored in the deployment. The invitation grants administrator access to the signed-in account once and cannot be reused. Keep the invitation outside the repository. Additional administrators can be selected by immutable account IDs in `ADMIN_USER_IDS`, never by an unverified email address.
 
 Custom domains require a server-only `PAGES_API_TOKEN` with **Pages Write** for the project account, plus `PAGES_ACCOUNT_ID`, `PAGES_PROJECT_NAME` and `PAGES_PROJECT_SUBDOMAIN`. Students add a TXT ownership proof and a CNAME at their domain registrar. They do not need Cloudflare accounts for a supported subdomain. Apex domains and provider-account transfers are not automated; students can export their website to their own host and repoint their domain.
 
 ## Ownership and data
 
 Students retain their content and exported websites. The export contains static HTML, styles, fonts, images where download is permitted, and an editable `portfolio.json`. It contains no credentials. Third-party images and fonts retain their own licences. Importing a CV does not upload the original file; extracted text is only sent with an explicitly included AI request.
+
+Uploaded images are compressed in the browser and kept private until included in a published snapshot. Current limits are 400 KB per image, 40 images per portfolio and 5 MB of uploaded media per account. Accounts can keep up to 20 active portfolios; cloud history retains the ten most recent versions. Downloaded `portfolio.json` files can be imported from the dashboard. Public URLs remain managed by this instance until the student exports and moves their website.
 
 Published websites have no compulsory Surrey AI Society branding. The Studio itself uses the original Society brand assets from [SurreySocieties](https://github.com/joshuasknott/surreysocieties). Fictional gallery profiles illustrate the designs and are not inserted as a student's experience.
 

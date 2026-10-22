@@ -79,12 +79,18 @@ function normalizeProvider(provider: Partial<Provider>): Provider {
   };
 }
 
-function supportsReasoning(models: string[]) {
-  return models.some((model) =>
-    /(?:gpt-5|o[1-9]|claude-(?:sonnet|opus)-4|deepseek-(?:reasoner|v4-pro)|think)/i.test(
-      model,
-    ),
-  );
+function supportsReasoning(provider: Pick<Provider, "id" | "models">) {
+  if (provider.id === "openai") {
+    return provider.models.some((model) =>
+      /^(?:o[1-9](?:-|$)|gpt-5(?:[-.]|$))/i.test(model),
+    );
+  }
+  if (provider.id === "gemini") {
+    return provider.models.some((model) =>
+      /^gemini-2\.5-(?:pro|flash|flash-lite)(?:-|$)/i.test(model),
+    );
+  }
+  return false;
 }
 
 function blankProvider(existing: Provider[]): Provider {
@@ -147,7 +153,7 @@ export function Admin() {
       const payload = providers.map((provider) => ({
         ...provider,
         models: provider.models.map((model) => model.trim()).filter(Boolean),
-        reasoning: supportsReasoning(provider.models) && provider.reasoning,
+        reasoning: supportsReasoning(provider) && provider.reasoning,
         apiKey: provider.apiKey?.trim() || undefined,
         clearApiKey: provider.clearApiKey || undefined,
       }));
@@ -225,7 +231,7 @@ export function Admin() {
             </section>
             <div className="admin-provider-list">
               {providers.map((provider) => {
-                const reasoningAvailable = supportsReasoning(provider.models);
+                const reasoningAvailable = supportsReasoning(provider);
                 return (
                   <article
                     className={`settings-card provider-card ${provider.enabled ? "provider-enabled" : ""}`}
@@ -392,18 +398,24 @@ export function Admin() {
                         />
                       </label>
                     </div>
-                    {reasoningAvailable && (
-                      <label className="checkbox-line">
-                        <input
-                          type="checkbox"
-                          checked={provider.reasoning}
-                          onChange={(e) =>
-                            update(provider.id, { reasoning: e.target.checked })
-                          }
-                        />{" "}
-                        Allow reasoning controls for supported models
-                      </label>
-                    )}
+                    <label className="checkbox-line">
+                      <input
+                        type="checkbox"
+                        checked={reasoningAvailable && provider.reasoning}
+                        disabled={!reasoningAvailable}
+                        onChange={(e) =>
+                          update(provider.id, { reasoning: e.target.checked })
+                        }
+                      />{" "}
+                      {reasoningAvailable
+                        ? "Allow deeper reasoning"
+                        : "Deeper reasoning unavailable"}{" "}
+                      <span className="optional">
+                        {reasoningAvailable
+                          ? "compatible models only"
+                          : "add a supported OpenAI or Gemini model"}
+                      </span>
+                    </label>
                     <div className="provider-secret">
                       <label className="field-label">
                         Provider API key{" "}

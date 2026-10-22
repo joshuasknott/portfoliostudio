@@ -9,18 +9,20 @@
       "binding": "DB",
       "database_name": "portfolio-studio",
       "database_id": "65b2f207-de7d-498c-a535-92df74da9689",
-      "migrations_dir": "./migrations"
-    }
+      "migrations_dir": "./migrations",
+    },
   ],
   "ai": {
     "binding": "AI",
-    "remote": true
+    "remote": true,
   },
   "vars": {
-    "CLOUDFLARE_ACCOUNT_ID": "94e53728b92c0b8a3d621f72ad9c8eb4",
+    "PAGES_ACCOUNT_ID": "94e53728b92c0b8a3d621f72ad9c8eb4",
     "PAGES_PROJECT_NAME": "portfolio-studio",
     "PAGES_PROJECT_SUBDOMAIN": "portfolio-studio-1uu.pages.dev",
     "ADMIN_USER_IDS": "",
-    "ENVIRONMENT": "production"
-  }
+    "ENVIRONMENT": "production",
+    "APP_ORIGIN": "https://portfolio-studio-1uu.pages.dev",
+    "PUBLIC_APP_URL": "https://portfolio-studio-1uu.pages.dev",
+  },
 }
